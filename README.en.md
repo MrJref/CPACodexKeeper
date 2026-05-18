@@ -141,6 +141,12 @@ Then edit `.env`.
 - `CPA_USAGE_TIMEOUT`: timeout for OpenAI usage requests, default `15`
 - `CPA_MAX_RETRIES`: retry count for transient network / 5xx failures, default `2`
 - `CPA_WORKER_THREADS`: number of worker threads per inspection round, default `8`
+- `WEBUI_ENABLED`: whether to start the built-in WebUI, default `false`; `docker-compose.yml` sets it to `true`
+- `APP_HOST`: WebUI listen address, default `0.0.0.0`
+- `APP_PORT`: WebUI listen port, default `8080`
+- `AUTH_ENABLED`: whether WebUI login protection is enabled, default `false`
+- `LOGIN_PASSWORD`: required when `AUTH_ENABLED=true`
+- `AUTH_SESSION_TTL`: login session lifetime, default `168h`, supports `s/m/h/d` suffixes
 
 The `.env.example` file already includes bilingual comments for direct editing.
 
@@ -178,6 +184,29 @@ Useful for continuous maintenance:
 python main.py
 ```
 
+### WebUI
+
+The built-in WebUI keeps the daemon inspection loop and adds a status dashboard, recent logs, manual inspection trigger, and codex token list loading:
+
+```bash
+WEBUI_ENABLED=true python main.py
+```
+
+You can also override `.env` from the CLI:
+
+```bash
+python main.py --web
+python main.py --no-web
+```
+
+For public deployments, enable login protection:
+
+```env
+AUTH_ENABLED=true
+LOGIN_PASSWORD=replace-with-a-strong-password
+AUTH_SESSION_TTL=168h
+```
+
 ### Dry run
 
 This will not actually delete, disable, enable, or upload updates:
@@ -203,9 +232,13 @@ docker build -t cpacodexkeeper .
 ```bash
 docker run -d \
   --name cpacodexkeeper \
+  -p 8080:8080 \
   -e CPA_ENDPOINT=https://your-cpa-endpoint \
   -e CPA_TOKEN=your-management-token \
   -e CPA_INTERVAL=1800 \
+  -e WEBUI_ENABLED=true \
+  -e AUTH_ENABLED=true \
+  -e LOGIN_PASSWORD=replace-with-a-strong-password \
   cpacodexkeeper
 ```
 
@@ -221,6 +254,12 @@ Then edit `.env` and start:
 
 ```bash
 docker compose up -d --build
+```
+
+Compose maps `${APP_PORT:-8080}` by default and enables `WEBUI_ENABLED=true`. Then open:
+
+```text
+http://localhost:8080
 ```
 
 ---

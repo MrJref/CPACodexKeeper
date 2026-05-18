@@ -12,10 +12,10 @@ from .utils import format_seconds, get_expired_remaining, get_expired_remaining_
 
 
 class CPACodexKeeper:
-    def __init__(self, settings: Settings, dry_run: bool = False):
+    def __init__(self, settings: Settings, dry_run: bool = False, logger: ConsoleLogger | None = None):
         self.settings = settings
         self.dry_run = dry_run
-        self.logger = ConsoleLogger()
+        self.logger = logger or ConsoleLogger()
         self.cpa_client = CPAClient(
             settings.cpa_endpoint,
             settings.cpa_token,

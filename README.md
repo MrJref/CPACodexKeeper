@@ -142,6 +142,12 @@ cp .env.example .env
 - `CPA_USAGE_TIMEOUT`：OpenAI usage 请求超时秒数，默认 `15`
 - `CPA_MAX_RETRIES`：临时网络 / 5xx 错误重试次数，默认 `2`
 - `CPA_WORKER_THREADS`：单轮巡检的并发线程数，默认 `8`
+- `WEBUI_ENABLED`：是否启动内置 WebUI，默认 `false`；`docker-compose.yml` 默认设为 `true`
+- `APP_HOST`：WebUI 监听地址，默认 `0.0.0.0`
+- `APP_PORT`：WebUI 监听端口，默认 `8080`
+- `AUTH_ENABLED`：是否启用 WebUI 登录保护，默认 `false`
+- `LOGIN_PASSWORD`：启用 `AUTH_ENABLED=true` 时必填的登录密码
+- `AUTH_SESSION_TTL`：登录 session 有效期，默认 `168h`，支持 `s/m/h/d` 后缀
 
 推荐直接参考 `.env.example` 中的中英双语注释填写。
 
@@ -179,6 +185,29 @@ python main.py --once
 python main.py
 ```
 
+### WebUI
+
+内置 WebUI 会沿用守护模式巡检，并提供状态面板、最近日志、手动触发巡检和 codex token 列表读取：
+
+```bash
+WEBUI_ENABLED=true python main.py
+```
+
+也可以用命令行覆盖 `.env`：
+
+```bash
+python main.py --web
+python main.py --no-web
+```
+
+如果公开访问，建议设置：
+
+```env
+AUTH_ENABLED=true
+LOGIN_PASSWORD=replace-with-a-strong-password
+AUTH_SESSION_TTL=168h
+```
+
 ### 演练模式
 
 不会真正删除、禁用、启用或上传更新：
@@ -204,9 +233,13 @@ docker build -t cpacodexkeeper .
 ```bash
 docker run -d \
   --name cpacodexkeeper \
+  -p 8080:8080 \
   -e CPA_ENDPOINT=https://your-cpa-endpoint \
   -e CPA_TOKEN=your-management-token \
   -e CPA_INTERVAL=1800 \
+  -e WEBUI_ENABLED=true \
+  -e AUTH_ENABLED=true \
+  -e LOGIN_PASSWORD=replace-with-a-strong-password \
   cpacodexkeeper
 ```
 
@@ -222,6 +255,12 @@ cp .env.example .env
 
 ```bash
 docker compose up -d --build
+```
+
+Compose 默认映射 `${APP_PORT:-8080}` 并启用 `WEBUI_ENABLED=true`。启动后访问：
+
+```text
+http://localhost:8080
 ```
 
 ---

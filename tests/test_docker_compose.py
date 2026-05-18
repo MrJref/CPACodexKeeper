@@ -12,3 +12,7 @@ class DockerComposeTests(unittest.TestCase):
         self.assertIn("CPA_ENABLE_REFRESH:", compose_text)
         self.assertIn("CPA_ENABLE_REFRESH: ${CPA_ENABLE_REFRESH:-true}", compose_text)
         self.assertIn("CPA_WORKER_THREADS:", compose_text)
+        self.assertIn("WEBUI_ENABLED: ${WEBUI_ENABLED:-true}", compose_text)
+        self.assertIn("AUTH_ENABLED: ${AUTH_ENABLED:-false}", compose_text)
+        self.assertIn("LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}", compose_text)
+        self.assertIn('"${APP_PORT:-8080}:${APP_PORT:-8080}"', compose_text)

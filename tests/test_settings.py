@@ -27,15 +27,33 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.interval_seconds, 1800)
         self.assertEqual(settings.worker_threads, 8)
         self.assertTrue(settings.enable_refresh)
+        self.assertFalse(settings.webui_enabled)
+        self.assertEqual(settings.app_port, 8080)
+        self.assertFalse(settings.auth_enabled)
 
     def test_load_settings_reads_from_project_env_file(self):
-        env_file = self._make_env_file("CPA_ENDPOINT=https://env-file.example.com\nCPA_TOKEN=file-secret\nCPA_INTERVAL=120\nCPA_WORKER_THREADS=6\n")
+        env_file = self._make_env_file(
+            "CPA_ENDPOINT=https://env-file.example.com\n"
+            "CPA_TOKEN=file-secret\n"
+            "CPA_INTERVAL=120\n"
+            "CPA_WORKER_THREADS=6\n"
+            "WEBUI_ENABLED=true\n"
+            "APP_PORT=9090\n"
+            "AUTH_ENABLED=true\n"
+            "LOGIN_PASSWORD=web-secret\n"
+            "AUTH_SESSION_TTL=12h\n"
+        )
         with patch.dict(os.environ, {}, clear=True):
             settings = load_settings(env_file=env_file)
         self.assertEqual(settings.cpa_endpoint, "https://env-file.example.com")
         self.assertEqual(settings.cpa_token, "file-secret")
         self.assertEqual(settings.interval_seconds, 120)
         self.assertEqual(settings.worker_threads, 6)
+        self.assertTrue(settings.webui_enabled)
+        self.assertEqual(settings.app_port, 9090)
+        self.assertTrue(settings.auth_enabled)
+        self.assertEqual(settings.login_password, "web-secret")
+        self.assertEqual(settings.auth_session_ttl_seconds, 12 * 60 * 60)
 
     def test_environment_variables_override_project_env_file(self):
         env_file = self._make_env_file("CPA_ENDPOINT=https://env-file.example.com\nCPA_TOKEN=file-secret\nCPA_WORKER_THREADS=4\n")
@@ -66,5 +84,17 @@ class SettingsTests(unittest.TestCase):
     def test_load_settings_rejects_zero_worker_threads(self):
         env_file = Path("does-not-exist.env")
         with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "CPA_WORKER_THREADS": "0"}, clear=True):
+            with self.assertRaises(SettingsError):
+                load_settings(env_file=env_file)
+
+    def test_load_settings_requires_login_password_when_auth_enabled(self):
+        env_file = Path("does-not-exist.env")
+        with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "AUTH_ENABLED": "true"}, clear=True):
+            with self.assertRaises(SettingsError):
+                load_settings(env_file=env_file)
+
+    def test_load_settings_rejects_bad_auth_session_ttl(self):
+        env_file = Path("does-not-exist.env")
+        with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "AUTH_SESSION_TTL": "0s"}, clear=True):
             with self.assertRaises(SettingsError):
                 load_settings(env_file=env_file)

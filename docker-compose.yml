@@ -3,6 +3,8 @@ services:
     build: .
     container_name: cpacodexkeeper
     restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
     environment:
       CPA_ENDPOINT: ${CPA_ENDPOINT}
       CPA_TOKEN: ${CPA_TOKEN}
@@ -15,3 +17,9 @@ services:
       CPA_USAGE_TIMEOUT: ${CPA_USAGE_TIMEOUT:-15}
       CPA_MAX_RETRIES: ${CPA_MAX_RETRIES:-2}
       CPA_WORKER_THREADS: ${CPA_WORKER_THREADS:-8}
+      WEBUI_ENABLED: ${WEBUI_ENABLED:-true}
+      APP_HOST: ${APP_HOST:-0.0.0.0}
+      APP_PORT: ${APP_PORT:-8080}
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}
+      AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-168h}

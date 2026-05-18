@@ -22,6 +22,12 @@ class CLITests(unittest.TestCase):
 
         self.assertFalse(args.daemon)
 
+    def test_web_flag_enables_webui_override(self):
+        parser = build_arg_parser()
+        args = parser.parse_args(["--web"])
+
+        self.assertTrue(args.webui)
+
     @patch("src.cli.load_settings")
     @patch("src.cli.CPACodexKeeper")
     @patch("sys.argv", ["prog", "--once"])
@@ -37,3 +43,18 @@ class CLITests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         keeper.run.assert_called_once()
         keeper.run_forever.assert_not_called()
+
+    @patch("src.cli.serve_webui")
+    @patch("src.cli.load_settings")
+    @patch("sys.argv", ["prog", "--web", "--once"])
+    def test_main_starts_webui_when_enabled(self, load_settings_mock, serve_webui_mock):
+        settings = Settings(
+            cpa_endpoint="https://example.com",
+            cpa_token="secret",
+        )
+        load_settings_mock.return_value = settings
+
+        exit_code = main()
+
+        self.assertEqual(exit_code, 0)
+        serve_webui_mock.assert_called_once_with(settings=settings, dry_run=False, start_scheduler=False)

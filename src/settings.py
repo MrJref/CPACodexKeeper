@@ -11,6 +11,11 @@ DEFAULT_CPA_TIMEOUT_SECONDS = 30
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_WORKER_THREADS = 8
 DEFAULT_ENABLE_REFRESH = True
+DEFAULT_WEBUI_ENABLED = False
+DEFAULT_APP_HOST = "0.0.0.0"
+DEFAULT_APP_PORT = 8080
+DEFAULT_AUTH_ENABLED = False
+DEFAULT_AUTH_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 PROJECT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 
@@ -31,6 +36,12 @@ class Settings:
     max_retries: int = DEFAULT_MAX_RETRIES
     worker_threads: int = DEFAULT_WORKER_THREADS
     enable_refresh: bool = DEFAULT_ENABLE_REFRESH
+    webui_enabled: bool = DEFAULT_WEBUI_ENABLED
+    app_host: str = DEFAULT_APP_HOST
+    app_port: int = DEFAULT_APP_PORT
+    auth_enabled: bool = DEFAULT_AUTH_ENABLED
+    login_password: str = ""
+    auth_session_ttl_seconds: int = DEFAULT_AUTH_SESSION_TTL_SECONDS
 
 
 def _read_project_env_file(env_file: Path | None = None) -> dict[str, str]:
@@ -88,11 +99,36 @@ def _read_bool(name: str, default: bool, env_values: dict[str, str]) -> bool:
     raise SettingsError(f"{name} must be a boolean")
 
 
+def _read_duration_seconds(name: str, default: int, env_values: dict[str, str]) -> int:
+    raw = _get_config_value(name, env_values)
+    if raw in (None, ""):
+        return default
+    value = raw.strip().lower()
+    unit_multipliers = {
+        "s": 1,
+        "m": 60,
+        "h": 60 * 60,
+        "d": 24 * 60 * 60,
+    }
+    try:
+        if value[-1:] in unit_multipliers:
+            seconds = int(value[:-1]) * unit_multipliers[value[-1]]
+        else:
+            seconds = int(value)
+    except (ValueError, IndexError) as exc:
+        raise SettingsError(f"{name} must be a duration such as 3600, 60m, 24h, or 7d") from exc
+    if seconds <= 0:
+        raise SettingsError(f"{name} must be positive")
+    return seconds
+
+
 def load_settings(env_file: Path | None = None) -> Settings:
     env_values = _read_project_env_file(env_file)
     endpoint = (_get_config_value("CPA_ENDPOINT", env_values) or "").strip().rstrip("/")
     token = (_get_config_value("CPA_TOKEN", env_values) or "").strip()
     proxy = (_get_config_value("CPA_PROXY", env_values) or "").strip() or None
+    auth_enabled = _read_bool("AUTH_ENABLED", DEFAULT_AUTH_ENABLED, env_values)
+    login_password = (_get_config_value("LOGIN_PASSWORD", env_values) or "").strip()
 
     if not endpoint:
         raise SettingsError("CPA_ENDPOINT is required")
@@ -100,6 +136,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         raise SettingsError("CPA_TOKEN is required")
     if not endpoint.startswith(("http://", "https://")):
         raise SettingsError("CPA_ENDPOINT must start with http:// or https://")
+    if auth_enabled and not login_password:
+        raise SettingsError("LOGIN_PASSWORD is required when AUTH_ENABLED is true")
 
     return Settings(
         cpa_endpoint=endpoint,
@@ -113,4 +151,10 @@ def load_settings(env_file: Path | None = None) -> Settings:
         max_retries=_read_int("CPA_MAX_RETRIES", DEFAULT_MAX_RETRIES, env_values, minimum=0, maximum=5),
         worker_threads=_read_int("CPA_WORKER_THREADS", DEFAULT_WORKER_THREADS, env_values, minimum=1),
         enable_refresh=_read_bool("CPA_ENABLE_REFRESH", DEFAULT_ENABLE_REFRESH, env_values),
+        webui_enabled=_read_bool("WEBUI_ENABLED", DEFAULT_WEBUI_ENABLED, env_values),
+        app_host=(_get_config_value("APP_HOST", env_values) or DEFAULT_APP_HOST).strip() or DEFAULT_APP_HOST,
+        app_port=_read_int("APP_PORT", DEFAULT_APP_PORT, env_values, minimum=1, maximum=65535),
+        auth_enabled=auth_enabled,
+        login_password=login_password,
+        auth_session_ttl_seconds=_read_duration_seconds("AUTH_SESSION_TTL", DEFAULT_AUTH_SESSION_TTL_SECONDS, env_values),
     )
