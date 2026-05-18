@@ -156,6 +156,14 @@ class CPACodexKeeper:
 
     def _delete_token_with_reason(self, name, reason, logger):
         logger.log("WARN", reason, indent=1)
+        if not self.settings.enable_auto_delete:
+            logger.log("WARN", "自动删除已关闭，改为禁用", indent=1)
+            if self.set_disabled_status(name, disabled=True, logger=logger):
+                logger.log("DISABLE", "已禁用", indent=1)
+                self._inc_stat("disabled")
+                logger.blank_line()
+                return "disabled"
+            return self._skip_token("禁用失败", logger)
         if self.delete_token(name, logger=logger):
             logger.log("DELETE", "已删除", indent=1)
             self._inc_stat("dead")
@@ -392,6 +400,7 @@ class CPACodexKeeper:
         self.log("INFO", f"Remaining quota threshold: {self.settings.quota_threshold}% (disable when remaining quota is below)")
         self.log("INFO", f"Expiry threshold: {self.settings.expiry_threshold_days} days (refresh disabled auth when below)")
         self.log("INFO", f"Refresh enabled: {self.settings.enable_refresh}")
+        self.log("INFO", f"Auto delete enabled: {self.settings.enable_auto_delete}")
         if self.dry_run:
             self.log("DRY", "演练模式 (不实际修改)")
         self.logger.divider()

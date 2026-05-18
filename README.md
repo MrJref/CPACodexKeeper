@@ -140,6 +140,7 @@ cp .env.example .env
 - `CPA_QUOTA_THRESHOLD`：剩余额度禁用阈值，默认 `1`；例如 `30` 表示剩余额度小于 30% 时禁用
 - `CPA_EXPIRY_THRESHOLD_DAYS`：禁用 token 的刷新阈值天数，默认 `3`
 - `CPA_ENABLE_REFRESH`：是否启用对禁用 token 的自动刷新，默认 `true`
+- `CPA_ENABLE_AUTO_DELETE`：是否启用自动删除，默认 `true`；设为 `false` 时原本会删除的 token 改为禁用
 - `CPA_HTTP_TIMEOUT`：CPA API 请求超时秒数，默认 `30`
 - `CPA_USAGE_TIMEOUT`：OpenAI usage 请求超时秒数，默认 `15`
 - `CPA_MAX_RETRIES`：临时网络 / 5xx 错误重试次数，默认 `2`

@@ -100,14 +100,13 @@ def _config_updates_from_payload(payload: dict[str, Any]) -> dict[str, dict[str,
     _set_if_present(cpa, "quota_threshold", _payload_int(payload, "quotaThreshold", minimum=0, maximum=100))
     _set_if_present(cpa, "expiry_threshold_days", _payload_int(payload, "expiryThresholdDays", minimum=0))
     _set_if_present(cpa, "enable_refresh", _payload_bool(payload, "enableRefresh"))
+    _set_if_present(cpa, "enable_auto_delete", _payload_bool(payload, "enableAutoDelete"))
     _set_if_present(cpa, "http_timeout", _payload_int(payload, "cpaTimeoutSeconds", minimum=1))
     _set_if_present(cpa, "usage_timeout", _payload_int(payload, "usageTimeoutSeconds", minimum=1))
     _set_if_present(cpa, "max_retries", _payload_int(payload, "maxRetries", minimum=0, maximum=5))
     _set_if_present(cpa, "worker_threads", _payload_int(payload, "workerThreads", minimum=1))
 
     _set_if_present(webui, "enabled", _payload_bool(payload, "webuiEnabled"))
-    _set_if_present(webui, "log_max_lines", _payload_int(payload, "logMaxLines", minimum=1))
-
     _set_if_present(auth, "enabled", _payload_bool(payload, "authEnabled"))
     password = _payload_string(payload, "loginPassword", allow_empty=True)
     if password:
@@ -203,7 +202,8 @@ class KeeperRuntime:
             self.settings = settings
             self.logger.set_max_lines(settings.log_max_lines)
             self.keeper = CPACodexKeeper(settings=settings, dry_run=self.dry_run, logger=self.logger)
-            self.next_run_at = time.time() + settings.interval_seconds if self._scheduler_thread else self.next_run_at
+            scheduler_active = bool(self._scheduler_thread and self._scheduler_thread.is_alive() and not self._stop_event.is_set())
+            self.next_run_at = time.time() + settings.interval_seconds if scheduler_active else self.next_run_at
 
     def config_payload(self) -> dict[str, Any]:
         return {
@@ -216,6 +216,7 @@ class KeeperRuntime:
                 "quotaThreshold": self.settings.quota_threshold,
                 "expiryThresholdDays": self.settings.expiry_threshold_days,
                 "enableRefresh": self.settings.enable_refresh,
+                "enableAutoDelete": self.settings.enable_auto_delete,
                 "usageTimeoutSeconds": self.settings.usage_timeout_seconds,
                 "cpaTimeoutSeconds": self.settings.cpa_timeout_seconds,
                 "maxRetries": self.settings.max_retries,
@@ -244,31 +245,78 @@ class KeeperRuntime:
         self.logger.log("INFO", "WebUI 配置已保存并热更新生效")
         return self.config_payload()
 
-    def start_scheduler(self) -> None:
-        if self._scheduler_thread and self._scheduler_thread.is_alive():
-            return
-        self._scheduler_thread = threading.Thread(target=self._scheduler_loop, name="cpacodexkeeper-scheduler", daemon=True)
-        self._scheduler_thread.start()
+    def update_log_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        log_max_lines = _payload_int(payload, "logMaxLines", minimum=1)
+        if log_max_lines is None:
+            raise ValueError("logMaxLines is required")
+        old_text = PROJECT_CONFIG_FILE.read_text(encoding="utf-8") if PROJECT_CONFIG_FILE.exists() else None
+        try:
+            update_config_file({"webui": {"log_max_lines": log_max_lines}})
+            settings = load_settings()
+        except Exception:
+            if old_text is None:
+                PROJECT_CONFIG_FILE.unlink(missing_ok=True)
+            else:
+                PROJECT_CONFIG_FILE.write_text(old_text, encoding="utf-8")
+            raise
+        self.apply_settings(settings)
+        self.logger.log("INFO", f"WebUI 日志保留行数已更新为 {log_max_lines}")
+        return self.config_payload()
+
+    def scheduler_active(self) -> bool:
+        return bool(self._scheduler_thread and self._scheduler_thread.is_alive())
+
+    def start_scheduler(self) -> bool:
+        with self._state_lock:
+            if self._scheduler_thread and self._scheduler_thread.is_alive():
+                return False
+            self._stop_event.clear()
+            self.next_run_at = None
+            self._scheduler_thread = threading.Thread(
+                target=self._scheduler_loop,
+                name="cpacodexkeeper-scheduler",
+                daemon=True,
+            )
+            thread = self._scheduler_thread
+        thread.start()
+        return True
+
+    def stop_scheduler(self) -> bool:
+        with self._state_lock:
+            if not self._scheduler_thread or not self._scheduler_thread.is_alive() or self._stop_event.is_set():
+                self.next_run_at = None
+                return False
+            self._stop_event.set()
+            self.next_run_at = None
+        self.logger.log("INFO", "守护模式停止中")
+        return True
 
     def stop(self) -> None:
         self._stop_event.set()
 
     def _scheduler_loop(self) -> None:
         self.logger.log("INFO", f"守护模式启动，执行间隔: {self.settings.interval_seconds} 秒")
-        while not self._stop_event.is_set():
+        try:
+            while not self._stop_event.is_set():
+                with self._state_lock:
+                    self.round_no += 1
+                    round_no = self.round_no
+                    self.next_run_at = None
+                self.logger.log("INFO", f"开始第 {round_no} 轮巡检")
+                started = self._execute_round()
+                if started:
+                    self.logger.log("INFO", f"第 {round_no} 轮巡检结束")
+                if self._stop_event.is_set():
+                    break
+                with self._state_lock:
+                    self.next_run_at = time.time() + self.settings.interval_seconds
+                    wait_seconds = self.settings.interval_seconds
+                self.logger.log("INFO", f"等待 {wait_seconds} 秒后开始下一轮")
+                self._stop_event.wait(wait_seconds)
+        finally:
             with self._state_lock:
-                self.round_no += 1
-                round_no = self.round_no
                 self.next_run_at = None
-            self.logger.log("INFO", f"开始第 {round_no} 轮巡检")
-            started = self._execute_round()
-            if started:
-                self.logger.log("INFO", f"第 {round_no} 轮巡检结束")
-            with self._state_lock:
-                self.next_run_at = time.time() + self.settings.interval_seconds
-                wait_seconds = self.settings.interval_seconds
-            self.logger.log("INFO", f"等待 {wait_seconds} 秒后开始下一轮")
-            self._stop_event.wait(wait_seconds)
+            self.logger.log("INFO", "守护模式已停止")
 
     def run_once_async(self) -> bool:
         thread = threading.Thread(target=self._execute_round, name="cpacodexkeeper-manual-run", daemon=True)
@@ -278,8 +326,8 @@ class KeeperRuntime:
     def clear_logs(self) -> None:
         self.logger.clear()
 
-    def test_proxy_latency(self) -> dict[str, Any]:
-        proxy = self.settings.proxy
+    def test_proxy_latency(self, proxy: str | None = None) -> dict[str, Any]:
+        proxy = (proxy or self.settings.proxy or "").strip()
         if not proxy:
             result = {
                 "ok": False,
@@ -366,6 +414,7 @@ class KeeperRuntime:
     def status(self) -> dict[str, Any]:
         with self._state_lock:
             return {
+                "serviceRunning": self.scheduler_active(),
                 "running": self.running,
                 "roundNo": self.round_no,
                 "lastStartedAt": iso_from_timestamp(self.last_started_at),
@@ -381,6 +430,7 @@ class KeeperRuntime:
                     "quotaThreshold": self.settings.quota_threshold,
                     "expiryThresholdDays": self.settings.expiry_threshold_days,
                     "enableRefresh": self.settings.enable_refresh,
+                    "enableAutoDelete": self.settings.enable_auto_delete,
                     "usageTimeoutSeconds": self.settings.usage_timeout_seconds,
                     "cpaTimeoutSeconds": self.settings.cpa_timeout_seconds,
                     "maxRetries": self.settings.max_retries,
@@ -530,6 +580,18 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             self.service.runtime.run_once_async()
             self._send_json({"accepted": True, "timestamp": utc_now_iso()}, status=HTTPStatus.ACCEPTED)
             return
+        if self.path == "/api/service/start":
+            if not self._require_auth():
+                return
+            started = self.service.runtime.start_scheduler()
+            self._send_json({"started": started, "serviceRunning": self.service.runtime.scheduler_active(), "timestamp": utc_now_iso()})
+            return
+        if self.path == "/api/service/stop":
+            if not self._require_auth():
+                return
+            stopped = self.service.runtime.stop_scheduler()
+            self._send_json({"stopped": stopped, "serviceRunning": self.service.runtime.scheduler_active(), "timestamp": utc_now_iso()})
+            return
         if self.path == "/api/logs/clear":
             if not self._require_auth():
                 return
@@ -539,13 +601,27 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         if self.path == "/api/proxy/test":
             if not self._require_auth():
                 return
-            self._send_json(self.service.runtime.test_proxy_latency())
+            payload = self._read_json()
+            self._send_json(self.service.runtime.test_proxy_latency(_payload_string(payload, "proxy", allow_empty=True)))
             return
         if self.path == "/api/config":
             if not self._require_auth():
                 return
             try:
                 config = self.service.runtime.update_config(self._read_json())
+            except (SettingsError, ValueError) as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            except OSError as exc:
+                self._send_json({"error": f"failed to write config.yml: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            self._send_json({"saved": True, "config": config, "timestamp": utc_now_iso()})
+            return
+        if self.path == "/api/log-settings":
+            if not self._require_auth():
+                return
+            try:
+                config = self.service.runtime.update_log_settings(self._read_json())
             except (SettingsError, ValueError) as exc:
                 self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
                 return
@@ -604,7 +680,7 @@ class WebUIServer(ThreadingHTTPServer):
     service: WebUIService
 
 
-def serve_webui(settings: Settings, *, dry_run: bool = False, start_scheduler: bool = True) -> None:
+def serve_webui(settings: Settings, *, dry_run: bool = False, start_scheduler: bool = False) -> None:
     runtime = KeeperRuntime(settings=settings, dry_run=dry_run)
     server = WebUIServer((settings.app_host, settings.app_port), WebUIRequestHandler)
     server.service = WebUIService(runtime)

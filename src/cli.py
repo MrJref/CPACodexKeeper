@@ -25,7 +25,7 @@ def main() -> int:
 
     webui_enabled = settings.webui_enabled if args.webui is None else args.webui
     if webui_enabled:
-        serve_webui(settings=settings, dry_run=args.dry_run, start_scheduler=args.daemon)
+        serve_webui(settings=settings, dry_run=args.dry_run, start_scheduler=False)
         return 0
 
     maintainer = CPACodexKeeper(settings=settings, dry_run=args.dry_run)

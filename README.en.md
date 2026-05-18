@@ -140,6 +140,7 @@ Then edit `.env`, or edit `config.yml` directly.
 - `CPA_QUOTA_THRESHOLD`: remaining-quota disable threshold, default `1`; for example, `30` disables when remaining quota is below 30%
 - `CPA_EXPIRY_THRESHOLD_DAYS`: refresh threshold in days for disabled tokens, default `3`
 - `CPA_ENABLE_REFRESH`: whether automatic refresh for disabled tokens is enabled, default `true`
+- `CPA_ENABLE_AUTO_DELETE`: whether automatic deletion is enabled, default `true`; when `false`, tokens that would be deleted are disabled instead
 - `CPA_HTTP_TIMEOUT`: timeout for CPA API requests, default `30`
 - `CPA_USAGE_TIMEOUT`: timeout for OpenAI usage requests, default `15`
 - `CPA_MAX_RETRIES`: retry count for transient network / 5xx failures, default `2`

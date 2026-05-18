@@ -13,6 +13,7 @@ DEFAULT_CPA_TIMEOUT_SECONDS = 30
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_WORKER_THREADS = 8
 DEFAULT_ENABLE_REFRESH = True
+DEFAULT_ENABLE_AUTO_DELETE = True
 DEFAULT_WEBUI_ENABLED = False
 DEFAULT_APP_HOST = "0.0.0.0"
 DEFAULT_APP_PORT = 8080
@@ -30,6 +31,7 @@ CONFIG_KEY_ALIASES = {
     "cpa.quota_threshold": "CPA_QUOTA_THRESHOLD",
     "cpa.expiry_threshold_days": "CPA_EXPIRY_THRESHOLD_DAYS",
     "cpa.enable_refresh": "CPA_ENABLE_REFRESH",
+    "cpa.enable_auto_delete": "CPA_ENABLE_AUTO_DELETE",
     "cpa.http_timeout": "CPA_HTTP_TIMEOUT",
     "cpa.usage_timeout": "CPA_USAGE_TIMEOUT",
     "cpa.max_retries": "CPA_MAX_RETRIES",
@@ -61,6 +63,7 @@ class Settings:
     max_retries: int = DEFAULT_MAX_RETRIES
     worker_threads: int = DEFAULT_WORKER_THREADS
     enable_refresh: bool = DEFAULT_ENABLE_REFRESH
+    enable_auto_delete: bool = DEFAULT_ENABLE_AUTO_DELETE
     webui_enabled: bool = DEFAULT_WEBUI_ENABLED
     app_host: str = DEFAULT_APP_HOST
     app_port: int = DEFAULT_APP_PORT
@@ -361,6 +364,7 @@ def load_settings(env_file: Path | None = None, config_file: Path | None = None)
         max_retries=_read_int("CPA_MAX_RETRIES", DEFAULT_MAX_RETRIES, env_values, config_values, minimum=0, maximum=5),
         worker_threads=_read_int("CPA_WORKER_THREADS", DEFAULT_WORKER_THREADS, env_values, config_values, minimum=1),
         enable_refresh=_read_bool("CPA_ENABLE_REFRESH", DEFAULT_ENABLE_REFRESH, env_values, config_values),
+        enable_auto_delete=_read_bool("CPA_ENABLE_AUTO_DELETE", DEFAULT_ENABLE_AUTO_DELETE, env_values, config_values),
         webui_enabled=_read_bool("WEBUI_ENABLED", DEFAULT_WEBUI_ENABLED, env_values, config_values),
         app_host=_read_string("APP_HOST", DEFAULT_APP_HOST, env_values, config_values) or DEFAULT_APP_HOST,
         app_port=_read_int("APP_PORT", DEFAULT_APP_PORT, env_values, config_values, minimum=1, maximum=65535),

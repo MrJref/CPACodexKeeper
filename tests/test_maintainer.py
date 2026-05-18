@@ -84,6 +84,36 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(result, "dead")
         self.assertEqual(self.maintainer.stats.dead, 1)
 
+    def test_process_token_disables_invalid_token_when_auto_delete_disabled(self):
+        settings = Settings(
+            cpa_endpoint="https://example.com",
+            cpa_token="secret",
+            quota_threshold=30,
+            enable_auto_delete=False,
+        )
+        maintainer = CPACodexKeeper(settings=settings, dry_run=True)
+        maintainer.get_token_detail = Mock(return_value={
+            "email": "a@example.com",
+            "disabled": False,
+            "access_token": "token",
+            "refresh_token": "rt",
+            "account_id": "acc",
+            "expired": "2099-01-01T00:00:00Z",
+        })
+        maintainer.check_token_live = Mock(return_value=(401, {"brief": "unauthorized"}))
+        maintainer.delete_token = Mock(return_value=True)
+        maintainer.set_disabled_status = Mock(return_value=True)
+
+        result = maintainer.process_token({"name": "t1"}, 1, 1)
+
+        self.assertEqual(result, "disabled")
+        self.assertEqual(maintainer.stats.disabled, 1)
+        maintainer.delete_token.assert_not_called()
+        maintainer.set_disabled_status.assert_called_once()
+        args, kwargs = maintainer.set_disabled_status.call_args
+        self.assertEqual(args, ("t1",))
+        self.assertEqual(kwargs["disabled"], True)
+
     def test_process_token_deletes_invalid_token_on_402(self):
         self.maintainer.get_token_detail = Mock(return_value={
             "email": "a@example.com",
@@ -438,6 +468,34 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(args, ("t-expired",))
         self.assertIn("logger", kwargs)
 
+    def test_process_token_disables_expired_token_without_refresh_token_when_auto_delete_disabled(self):
+        settings = Settings(
+            cpa_endpoint="https://example.com",
+            cpa_token="secret",
+            quota_threshold=30,
+            enable_auto_delete=False,
+        )
+        maintainer = CPACodexKeeper(settings=settings, dry_run=True)
+        maintainer.get_token_detail = Mock(return_value={
+            "email": "a@example.com",
+            "disabled": False,
+            "access_token": "token",
+            "refresh_token": "",
+            "account_id": "acc",
+            "expired": "2000-01-01T00:00:00Z",
+        })
+        maintainer.delete_token = Mock(return_value=True)
+        maintainer.set_disabled_status = Mock(return_value=True)
+        maintainer.check_token_live = Mock(return_value=(200, {}))
+
+        result = maintainer.process_token({"name": "t-expired"}, 1, 1)
+
+        self.assertEqual(result, "disabled")
+        self.assertEqual(maintainer.stats.disabled, 1)
+        maintainer.delete_token.assert_not_called()
+        maintainer.check_token_live.assert_not_called()
+        maintainer.set_disabled_status.assert_called_once()
+
     def test_process_token_deletes_quota_exhausted_token_without_refresh_token(self):
         self.maintainer.get_token_detail = Mock(return_value={
             "email": "a@example.com",
@@ -468,6 +526,42 @@ class MaintainerTests(unittest.TestCase):
         args, kwargs = self.maintainer.delete_token.call_args
         self.assertEqual(args, ("t-no-rt",))
         self.assertIn("logger", kwargs)
+
+    def test_process_token_disables_quota_exhausted_token_without_refresh_token_when_auto_delete_disabled(self):
+        settings = Settings(
+            cpa_endpoint="https://example.com",
+            cpa_token="secret",
+            quota_threshold=30,
+            enable_auto_delete=False,
+        )
+        maintainer = CPACodexKeeper(settings=settings, dry_run=True)
+        maintainer.get_token_detail = Mock(return_value={
+            "email": "a@example.com",
+            "disabled": False,
+            "access_token": "token",
+            "refresh_token": "",
+            "account_id": "acc",
+            "expired": "2099-01-01T00:00:00Z",
+        })
+        maintainer.check_token_live = Mock(return_value=(200, {
+            "json": {
+                "plan_type": "free",
+                "rate_limit": {
+                    "primary_window": {"used_percent": 100, "limit_window_seconds": 604800},
+                    "secondary_window": None,
+                },
+                "credits": {"has_credits": False},
+            }
+        }))
+        maintainer.delete_token = Mock(return_value=True)
+        maintainer.set_disabled_status = Mock(return_value=True)
+
+        result = maintainer.process_token({"name": "t-no-rt"}, 1, 1)
+
+        self.assertEqual(result, "disabled")
+        self.assertEqual(maintainer.stats.disabled, 1)
+        maintainer.delete_token.assert_not_called()
+        maintainer.set_disabled_status.assert_called_once()
 
     def test_process_token_keeps_non_refreshable_token_when_expiry_is_unknown(self):
         self.maintainer.get_token_detail = Mock(return_value={

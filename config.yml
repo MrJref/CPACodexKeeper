@@ -9,6 +9,7 @@
 #   quota_threshold: 1
 #   expiry_threshold_days: 3
 #   enable_refresh: true
+#   enable_auto_delete: true
 #   http_timeout: 30
 #   usage_timeout: 15
 #   max_retries: 2

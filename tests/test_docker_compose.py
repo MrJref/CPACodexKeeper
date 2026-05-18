@@ -11,6 +11,7 @@ class DockerComposeTests(unittest.TestCase):
 
         self.assertIn("CPA_ENABLE_REFRESH:", compose_text)
         self.assertIn("CPA_ENABLE_REFRESH: ${CPA_ENABLE_REFRESH:-true}", compose_text)
+        self.assertIn("CPA_ENABLE_AUTO_DELETE: ${CPA_ENABLE_AUTO_DELETE:-true}", compose_text)
         self.assertIn("CPA_WORKER_THREADS:", compose_text)
         self.assertIn("WEBUI_ENABLED: ${WEBUI_ENABLED:-true}", compose_text)
         self.assertIn("CPA_QUOTA_THRESHOLD: ${CPA_QUOTA_THRESHOLD:-1}", compose_text)

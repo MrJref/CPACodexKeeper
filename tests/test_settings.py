@@ -35,6 +35,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.quota_threshold, 1)
         self.assertEqual(settings.worker_threads, 8)
         self.assertTrue(settings.enable_refresh)
+        self.assertTrue(settings.enable_auto_delete)
         self.assertFalse(settings.webui_enabled)
         self.assertEqual(settings.app_port, 8080)
         self.assertFalse(settings.auth_enabled)
@@ -80,6 +81,7 @@ class SettingsTests(unittest.TestCase):
             "  endpoint: https://config.example.com\n"
             "  token: config-secret\n"
             "  worker_threads: 3\n"
+            "  enable_auto_delete: false\n"
             "webui:\n"
             "  enabled: true\n"
             "  port: 9091\n"
@@ -94,6 +96,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.cpa_endpoint, "https://config.example.com")
         self.assertEqual(settings.cpa_token, "config-secret")
         self.assertEqual(settings.worker_threads, 3)
+        self.assertFalse(settings.enable_auto_delete)
         self.assertTrue(settings.webui_enabled)
         self.assertEqual(settings.app_port, 9091)
         self.assertEqual(settings.log_max_lines, 42)

@@ -83,6 +83,30 @@ class WebUITests(unittest.TestCase):
         self.assertNotIn("cpaToken", status["settings"])
         self.assertNotIn("super-secret", str(status))
 
+    def test_runtime_service_is_stopped_by_default(self):
+        settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret")
+        runtime = KeeperRuntime(settings)
+
+        status = runtime.status()
+
+        self.assertFalse(status["serviceRunning"])
+        self.assertIsNone(status["nextRunAt"])
+
+    def test_runtime_can_start_and_stop_scheduler(self):
+        settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret", interval_seconds=60)
+        runtime = KeeperRuntime(settings)
+
+        def idle_scheduler():
+            runtime._stop_event.wait(5)
+
+        with patch.object(runtime, "_scheduler_loop", idle_scheduler):
+            self.assertTrue(runtime.start_scheduler())
+            self.assertTrue(runtime.status()["serviceRunning"])
+            self.assertTrue(runtime.stop_scheduler())
+
+        runtime._scheduler_thread.join(timeout=1)
+        self.assertFalse(runtime.status()["serviceRunning"])
+
     def test_runtime_uses_configured_log_max_lines(self):
         settings = Settings(
             cpa_endpoint="https://example.com",
@@ -105,6 +129,7 @@ class WebUITests(unittest.TestCase):
                 "  endpoint: https://example.com\n"
                 "  token: secret\n"
                 "  quota_threshold: 0\n"
+                "  enable_auto_delete: true\n"
                 "webui:\n"
                 "  log_max_lines: 5\n",
                 encoding="utf-8",
@@ -114,18 +139,45 @@ class WebUITests(unittest.TestCase):
                 cpa_token="secret",
                 quota_threshold=0,
                 log_max_lines=5,
+                enable_auto_delete=True,
             )
             runtime = KeeperRuntime(settings)
 
             with patch("src.webui.PROJECT_CONFIG_FILE", config_path), patch("src.settings.PROJECT_CONFIG_FILE", config_path), patch.dict(os.environ, {}, clear=True):
-                result = runtime.update_config({"cpaEndpoint": "https://example.com", "quotaThreshold": 30, "logMaxLines": 2})
+                result = runtime.update_config({"cpaEndpoint": "https://example.com", "quotaThreshold": 30, "enableAutoDelete": False})
 
             self.assertEqual(runtime.settings.quota_threshold, 30)
+            self.assertFalse(runtime.settings.enable_auto_delete)
             self.assertEqual(runtime.keeper.settings.quota_threshold, 30)
-            self.assertEqual(runtime.logger.max_lines, 2)
+            self.assertEqual(runtime.logger.max_lines, 5)
             self.assertEqual(result["values"]["quotaThreshold"], 30)
+            self.assertFalse(result["values"]["enableAutoDelete"])
             text = config_path.read_text(encoding="utf-8")
             self.assertIn("  quota_threshold: 30\n", text)
+            self.assertIn("  enable_auto_delete: false\n", text)
+            self.assertIn("  log_max_lines: 5\n", text)
+
+    def test_runtime_update_log_settings_writes_file_and_hot_reloads_log_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = pathlib.Path(temp_dir) / "config.yml"
+            config_path.write_text(
+                "cpa:\n"
+                "  endpoint: https://example.com\n"
+                "  token: secret\n"
+                "webui:\n"
+                "  log_max_lines: 5\n",
+                encoding="utf-8",
+            )
+            settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret", log_max_lines=5)
+            runtime = KeeperRuntime(settings)
+
+            with patch("src.webui.PROJECT_CONFIG_FILE", config_path), patch("src.settings.PROJECT_CONFIG_FILE", config_path), patch.dict(os.environ, {}, clear=True):
+                result = runtime.update_log_settings({"logMaxLines": 2})
+
+            self.assertEqual(runtime.settings.log_max_lines, 2)
+            self.assertEqual(runtime.logger.max_lines, 2)
+            self.assertEqual(result["values"]["logMaxLines"], 2)
+            text = config_path.read_text(encoding="utf-8")
             self.assertIn("  log_max_lines: 2\n", text)
 
     def test_proxy_test_reports_unconfigured_proxy(self):
@@ -154,6 +206,18 @@ class WebUITests(unittest.TestCase):
         self.assertEqual(result["statusCode"], 200)
         self.assertEqual(result["proxy"], "http://127.0.0.1:7890")
         self.assertIsInstance(result["latencyMs"], int)
+        get_mock.assert_called_once()
+
+    @patch("src.webui.requests.get")
+    def test_proxy_test_accepts_unsaved_proxy_override(self, get_mock):
+        get_mock.return_value = Mock(status_code=200)
+        settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret")
+        runtime = KeeperRuntime(settings)
+
+        result = runtime.test_proxy_latency("http://127.0.0.1:7890")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["proxy"], "http://127.0.0.1:7890")
         get_mock.assert_called_once()
 
     def test_proxy_label_sanitizes_without_port_validation(self):

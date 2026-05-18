@@ -38,6 +38,7 @@ INDEX_HTML = """<!doctype html>
         <div class="top-actions">
           <button id="themeToggle" class="pill-btn" type="button">深色</button>
           <button id="refreshButton" class="pill-btn" type="button">刷新</button>
+          <button id="serviceToggleButton" class="pill-btn" type="button">启动</button>
           <button id="runButton" class="btn btn-primary" type="button">立即巡检</button>
           <button id="logoutButton" class="pill-btn hidden" type="button">退出</button>
         </div>
@@ -54,17 +55,89 @@ INDEX_HTML = """<!doctype html>
             <span id="authBadge" class="badge">Auth</span>
           </div>
         </article>
-        <article class="card config-card">
-          <div class="card-kicker">Policy</div>
-          <dl class="config-list">
-            <div><dt>巡检间隔</dt><dd id="intervalValue">-</dd></div>
-            <div><dt>剩余额度阈值</dt><dd id="quotaValue">-</dd></div>
-            <div><dt>刷新阈值</dt><dd id="expiryValue">-</dd></div>
-            <div><dt>并发线程</dt><dd id="workersValue">-</dd></div>
-            <div><dt>日志行数</dt><dd id="logMaxLinesValue">-</dd></div>
-            <div><dt>代理状态</dt><dd id="proxyValue">-</dd></div>
-          </dl>
-          <button id="proxyTestButton" class="pill-btn wide-btn" type="button">检测代理延迟</button>
+        <article class="card settings-card">
+          <div class="section-head">
+            <div>
+              <div class="card-kicker">Config</div>
+              <h2>配置热更新</h2>
+            </div>
+            <span id="configSaveState" class="muted">保存后同步写入 config.yml</span>
+          </div>
+          <form id="configForm" class="config-form">
+            <div class="config-scroll">
+              <label class="field wide-field">
+                <span>CPA Endpoint</span>
+                <input id="configCpaEndpoint" name="cpaEndpoint" type="url" placeholder="https://your-cpa-endpoint">
+              </label>
+              <label class="field wide-field">
+                <span>CPA Token</span>
+                <input id="configCpaToken" name="cpaToken" type="password" autocomplete="new-password" placeholder="留空则不修改">
+              </label>
+              <label class="field wide-field field-with-action">
+                <span>代理</span>
+                <div class="input-action-row">
+                  <input id="configProxy" name="proxy" type="text" placeholder="http://127.0.0.1:7890">
+                  <button id="proxyTestButton" class="pill-btn" type="button">测试</button>
+                </div>
+                <small id="proxyValue" class="field-hint">-</small>
+              </label>
+              <label class="field">
+                <span>巡检间隔 (秒)</span>
+                <input id="configInterval" name="intervalSeconds" type="number" min="1">
+              </label>
+              <label class="field">
+                <span>剩余额度阈值 (%)</span>
+                <input id="configQuotaThreshold" name="quotaThreshold" type="number" min="0" max="100">
+              </label>
+              <label class="field">
+                <span>刷新阈值 (天)</span>
+                <input id="configExpiryThreshold" name="expiryThresholdDays" type="number" min="0">
+              </label>
+              <label class="field">
+                <span>并发线程</span>
+                <input id="configWorkers" name="workerThreads" type="number" min="1">
+              </label>
+              <label class="field">
+                <span>CPA HTTP 超时 (秒)</span>
+                <input id="configCpaTimeout" name="cpaTimeoutSeconds" type="number" min="1">
+              </label>
+              <label class="field">
+                <span>Usage 超时 (秒)</span>
+                <input id="configUsageTimeout" name="usageTimeoutSeconds" type="number" min="1">
+              </label>
+              <label class="field">
+                <span>最大重试</span>
+                <input id="configMaxRetries" name="maxRetries" type="number" min="0" max="5">
+              </label>
+              <label class="field">
+                <span>登录有效期 (秒)</span>
+                <input id="configAuthSessionTtl" name="authSessionTtlSeconds" type="number" min="1">
+              </label>
+              <label class="check-field">
+                <input id="configEnableRefresh" name="enableRefresh" type="checkbox">
+                <span>启用自动刷新</span>
+              </label>
+              <label class="check-field">
+                <input id="configEnableAutoDelete" name="enableAutoDelete" type="checkbox">
+                <span>启用自动删除</span>
+              </label>
+              <label class="check-field">
+                <input id="configWebuiEnabled" name="webuiEnabled" type="checkbox">
+                <span>配置中启用 WebUI</span>
+              </label>
+              <label class="check-field">
+                <input id="configAuthEnabled" name="authEnabled" type="checkbox">
+                <span>启用登录保护</span>
+              </label>
+              <label class="field wide-field">
+                <span>登录密码</span>
+                <input id="configLoginPassword" name="loginPassword" type="password" autocomplete="new-password" placeholder="留空则不修改">
+              </label>
+            </div>
+            <div class="config-footer">
+              <button id="saveConfigButton" class="btn btn-primary config-submit" type="submit">保存</button>
+            </div>
+          </form>
         </article>
       </section>
 
@@ -80,82 +153,6 @@ INDEX_HTML = """<!doctype html>
       </section>
 
       <section class="content-grid">
-        <article class="card settings-card">
-          <div class="section-head">
-            <div>
-              <div class="card-kicker">Config</div>
-              <h2>配置热更新</h2>
-            </div>
-            <span id="configSaveState" class="muted">保存后同步写入 config.yml</span>
-          </div>
-          <form id="configForm" class="config-form">
-            <label class="field">
-              <span>CPA Endpoint</span>
-              <input id="configCpaEndpoint" name="cpaEndpoint" type="url" placeholder="https://your-cpa-endpoint">
-            </label>
-            <label class="field">
-              <span>CPA Token</span>
-              <input id="configCpaToken" name="cpaToken" type="password" autocomplete="new-password" placeholder="留空则不修改">
-            </label>
-            <label class="field">
-              <span>代理</span>
-              <input id="configProxy" name="proxy" type="text" placeholder="http://127.0.0.1:7890">
-            </label>
-            <label class="field">
-              <span>巡检间隔 (秒)</span>
-              <input id="configInterval" name="intervalSeconds" type="number" min="1">
-            </label>
-            <label class="field">
-              <span>剩余额度阈值 (%)</span>
-              <input id="configQuotaThreshold" name="quotaThreshold" type="number" min="0" max="100">
-            </label>
-            <label class="field">
-              <span>刷新阈值 (天)</span>
-              <input id="configExpiryThreshold" name="expiryThresholdDays" type="number" min="0">
-            </label>
-            <label class="field">
-              <span>并发线程</span>
-              <input id="configWorkers" name="workerThreads" type="number" min="1">
-            </label>
-            <label class="field">
-              <span>日志保留行数</span>
-              <input id="configLogMaxLines" name="logMaxLines" type="number" min="1">
-            </label>
-            <label class="field">
-              <span>CPA HTTP 超时 (秒)</span>
-              <input id="configCpaTimeout" name="cpaTimeoutSeconds" type="number" min="1">
-            </label>
-            <label class="field">
-              <span>Usage 超时 (秒)</span>
-              <input id="configUsageTimeout" name="usageTimeoutSeconds" type="number" min="1">
-            </label>
-            <label class="field">
-              <span>最大重试</span>
-              <input id="configMaxRetries" name="maxRetries" type="number" min="0" max="5">
-            </label>
-            <label class="field">
-              <span>登录有效期 (秒)</span>
-              <input id="configAuthSessionTtl" name="authSessionTtlSeconds" type="number" min="1">
-            </label>
-            <label class="check-field">
-              <input id="configEnableRefresh" name="enableRefresh" type="checkbox">
-              <span>启用自动刷新</span>
-            </label>
-            <label class="check-field">
-              <input id="configWebuiEnabled" name="webuiEnabled" type="checkbox">
-              <span>配置中启用 WebUI</span>
-            </label>
-            <label class="check-field">
-              <input id="configAuthEnabled" name="authEnabled" type="checkbox">
-              <span>启用登录保护</span>
-            </label>
-            <label class="field">
-              <span>登录密码</span>
-              <input id="configLoginPassword" name="loginPassword" type="password" autocomplete="new-password" placeholder="留空则不修改">
-            </label>
-            <button id="saveConfigButton" class="btn btn-primary config-submit" type="submit">保存并热更新</button>
-          </form>
-        </article>
         <article class="card log-card">
           <div class="section-head">
             <div>
@@ -164,6 +161,11 @@ INDEX_HTML = """<!doctype html>
             </div>
             <div class="section-actions">
               <span id="lastRunValue" class="muted">尚未运行</span>
+              <label class="inline-field">
+                <span>日志保留行数</span>
+                <input id="logMaxLinesInput" type="number" min="1">
+              </label>
+              <span id="logSettingsState" class="muted">修改后自动生效</span>
               <button id="clearLogsButton" class="pill-btn" type="button">清空日志</button>
             </div>
           </div>
@@ -305,10 +307,11 @@ button, input { font: inherit; }
 }
 .hero-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, .8fr);
+  grid-template-columns: minmax(0, .9fr) minmax(420px, 1.1fr);
   gap: 18px;
+  align-items: stretch;
 }
-.hero-card, .config-card { padding: 24px; }
+.hero-card, .settings-card { padding: 24px; }
 .hero-card h2 { margin-top: 8px; font-size: clamp(30px, 5vw, 54px); line-height: .95; }
 .card-kicker {
   color: var(--text-tertiary);
@@ -332,18 +335,6 @@ button, input { font: inherit; }
 }
 .badge.ok { color: #047857; background: rgba(16, 185, 129, .14); border-color: rgba(16, 185, 129, .28); }
 .badge.warn { color: var(--danger-color); background: rgba(198, 87, 70, .12); border-color: rgba(198, 87, 70, .35); }
-.config-list { margin: 14px 0 0; display: grid; gap: 12px; }
-.config-list div {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border-color);
-}
-.config-list div:last-child { border-bottom: 0; }
-.config-list dt { color: var(--text-secondary); }
-.config-list dd { margin: 0; font-weight: 900; }
-.wide-btn { width: 100%; margin-top: 14px; }
 .stats-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; }
 .stat-card {
   min-height: 108px;
@@ -360,6 +351,29 @@ button, input { font: inherit; }
 .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
 .section-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .muted { color: var(--text-tertiary); font-size: 13px; }
+.inline-field {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 800;
+}
+.inline-field input {
+  width: 92px;
+  min-height: 30px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+}
 .empty-state {
   padding: 24px;
   border: 1px dashed var(--border-color);
@@ -410,16 +424,32 @@ button, input { font: inherit; }
   outline: none;
 }
 .field input:focus { border-color: var(--primary-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 16%, transparent); }
+.settings-card {
+  min-height: 0;
+  max-height: 560px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 .config-form {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
 }
-.config-form .field:first-child,
-.config-form .field:nth-child(2),
-.config-form .field:nth-child(3) {
-  grid-column: span 2;
+.config-scroll {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
+.wide-field { grid-column: 1 / -1; }
+.input-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.input-action-row .pill-btn { min-height: 46px; padding-inline: 18px; }
+.field-hint { min-height: 16px; color: var(--text-tertiary); font-size: 12px; font-weight: 800; }
 .check-field {
   min-height: 46px;
   display: flex;
@@ -433,13 +463,21 @@ button, input { font: inherit; }
   font-weight: 800;
 }
 .check-field input { width: 18px; height: 18px; accent-color: var(--primary-color); }
-.config-submit { grid-column: 1 / -1; justify-self: end; min-width: 180px; }
+.config-footer {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
+}
+.config-submit { min-width: 140px; }
 .form-error { margin: 0; color: var(--danger-color); font-size: 13px; font-weight: 800; }
 @media (max-width: 980px) {
   .top-bar, .brand-row { flex-direction: column; align-items: stretch; }
   .hero-grid, .content-grid, .login-frame { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .config-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-card { max-height: 620px; }
 }
 @media (max-width: 640px) {
   .page-frame { padding: 18px 12px 32px; }
@@ -448,7 +486,9 @@ button, input { font: inherit; }
   .top-actions { justify-content: stretch; }
   .top-actions > * { flex: 1; }
   .section-head, .section-actions { flex-direction: column; align-items: stretch; }
-  .config-form, .config-form .field:first-child, .config-form .field:nth-child(2), .config-form .field:nth-child(3) { grid-template-columns: 1fr; grid-column: auto; }
+  .config-scroll { grid-template-columns: 1fr; }
+  .wide-field { grid-column: auto; }
+  .input-action-row { grid-template-columns: 1fr; }
   .config-submit { width: 100%; }
 }
 """
@@ -460,6 +500,8 @@ const state = {
   authenticated: false,
   theme: localStorage.getItem('cpacodexkeeper-theme') || 'light',
   configDirty: false,
+  serviceRunning: false,
+  logSettingsTimer: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -516,21 +558,29 @@ function setBadge(el, text, kind) {
   if (kind) el.classList.add(kind);
 }
 
+function syncProxyTestButton(proxyConfigured = false) {
+  $('proxyTestButton').disabled = !proxyConfigured && !$('configProxy').value.trim();
+}
+
 function renderStatus(data) {
   const stats = data.stats || {};
   const proxyTest = data.proxyTest || {};
-  $('serviceState').textContent = data.running ? '巡检运行中' : '服务待命';
-  $('serviceDetail').textContent = data.running
-    ? `本轮开始于 ${formatDate(data.lastStartedAt)}`
-    : `下次自动巡检：${formatDate(data.nextRunAt)}`;
+  const serviceRunning = Boolean(data.serviceRunning);
+  state.serviceRunning = serviceRunning;
+  $('serviceToggleButton').textContent = serviceRunning ? '停止' : '启动';
+  if (data.running) {
+    $('serviceState').textContent = '巡检运行中';
+    $('serviceDetail').textContent = `本轮开始于 ${formatDate(data.lastStartedAt)}`;
+  } else if (serviceRunning) {
+    $('serviceState').textContent = '服务运行中';
+    $('serviceDetail').textContent = `下次自动巡检：${formatDate(data.nextRunAt)}`;
+  } else {
+    $('serviceState').textContent = '服务已停止';
+    $('serviceDetail').textContent = '点击启动后开始自动巡检。';
+  }
   setBadge($('endpointBadge'), data.settings?.cpaEndpoint || 'CPA', 'ok');
   setBadge($('dryRunBadge'), data.dryRun ? 'Dry Run' : 'Live Mode', data.dryRun ? 'warn' : 'ok');
   setBadge($('authBadge'), data.settings?.authEnabled ? 'Auth On' : 'Auth Off', data.settings?.authEnabled ? 'ok' : 'warn');
-  $('intervalValue').textContent = `${data.settings?.intervalSeconds || 0}s`;
-  $('quotaValue').textContent = `${data.settings?.quotaThreshold || 0}%`;
-  $('expiryValue').textContent = `${data.settings?.expiryThresholdDays || 0}d`;
-  $('workersValue').textContent = data.settings?.workerThreads || '-';
-  $('logMaxLinesValue').textContent = data.settings?.logMaxLines || '-';
   if (proxyTest.latencyMs !== undefined && proxyTest.latencyMs !== null) {
     $('proxyValue').textContent = `${proxyTest.latencyMs}ms`;
   } else if (proxyTest.error) {
@@ -549,7 +599,7 @@ function renderStatus(data) {
   $('lastRunValue').textContent = data.lastFinishedAt ? `上次完成：${formatDate(data.lastFinishedAt)}` : '尚未完成';
   $('logOutput').textContent = (data.logs || []).join('\\n') || '等待日志...';
   $('runButton').disabled = Boolean(data.running);
-  $('proxyTestButton').disabled = !data.settings?.proxyConfigured;
+  syncProxyTestButton(Boolean(data.settings?.proxyConfigured));
 }
 
 function fillConfigForm(values = {}) {
@@ -562,16 +612,17 @@ function fillConfigForm(values = {}) {
   $('configQuotaThreshold').value = values.quotaThreshold ?? '';
   $('configExpiryThreshold').value = values.expiryThresholdDays ?? '';
   $('configWorkers').value = values.workerThreads ?? '';
-  $('configLogMaxLines').value = values.logMaxLines ?? '';
   $('configCpaTimeout').value = values.cpaTimeoutSeconds ?? '';
   $('configUsageTimeout').value = values.usageTimeoutSeconds ?? '';
   $('configMaxRetries').value = values.maxRetries ?? '';
   $('configAuthSessionTtl').value = values.authSessionTtlSeconds ?? '';
   $('configEnableRefresh').checked = Boolean(values.enableRefresh);
+  $('configEnableAutoDelete').checked = values.enableAutoDelete !== false;
   $('configWebuiEnabled').checked = Boolean(values.webuiEnabled);
   $('configAuthEnabled').checked = Boolean(values.authEnabled);
   $('configLoginPassword').value = '';
   $('configLoginPassword').placeholder = values.loginPasswordConfigured ? '已配置，留空则不修改' : '未配置，请填写';
+  $('logMaxLinesInput').value = values.logMaxLines ?? '';
 }
 
 async function refreshConfig() {
@@ -593,12 +644,12 @@ function configPayload() {
     quotaThreshold: $('configQuotaThreshold').value,
     expiryThresholdDays: $('configExpiryThreshold').value,
     workerThreads: $('configWorkers').value,
-    logMaxLines: $('configLogMaxLines').value,
     cpaTimeoutSeconds: $('configCpaTimeout').value,
     usageTimeoutSeconds: $('configUsageTimeout').value,
     maxRetries: $('configMaxRetries').value,
     authSessionTtlSeconds: $('configAuthSessionTtl').value,
     enableRefresh: $('configEnableRefresh').checked,
+    enableAutoDelete: $('configEnableAutoDelete').checked,
     webuiEnabled: $('configWebuiEnabled').checked,
     authEnabled: $('configAuthEnabled').checked,
     loginPassword: $('configLoginPassword').value,
@@ -625,6 +676,33 @@ async function saveConfig(event) {
   }
 }
 
+async function saveLogSettings() {
+  const value = $('logMaxLinesInput').value;
+  $('logSettingsState').textContent = '正在保存...';
+  try {
+    const data = await api('/api/log-settings', {
+      method: 'POST',
+      body: JSON.stringify({ logMaxLines: value }),
+    });
+    $('logSettingsState').textContent = '已生效';
+    $('logMaxLinesInput').value = data.config?.values?.logMaxLines ?? value;
+    await refreshStatus();
+  } catch (error) {
+    if (error.message !== 'AUTH_REQUIRED') {
+      $('logSettingsState').textContent = error.message;
+    }
+  }
+}
+
+function scheduleLogSettingsSave() {
+  if (state.logSettingsTimer) clearTimeout(state.logSettingsTimer);
+  $('logSettingsState').textContent = '等待保存...';
+  state.logSettingsTimer = setTimeout(() => {
+    state.logSettingsTimer = null;
+    void saveLogSettings();
+  }, 500);
+}
+
 async function runNow() {
   $('runButton').disabled = true;
   try {
@@ -634,6 +712,20 @@ async function runNow() {
     if (error.message !== 'AUTH_REQUIRED') alert(error.message);
   } finally {
     $('runButton').disabled = false;
+  }
+}
+
+async function toggleService() {
+  const button = $('serviceToggleButton');
+  button.disabled = true;
+  try {
+    const path = state.serviceRunning ? '/api/service/stop' : '/api/service/start';
+    await api(path, { method: 'POST', body: '{}' });
+    await refreshStatus();
+  } catch (error) {
+    if (error.message !== 'AUTH_REQUIRED') alert(error.message);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -654,7 +746,10 @@ async function testProxy() {
   $('proxyTestButton').disabled = true;
   $('proxyValue').textContent = '检测中...';
   try {
-    const data = await api('/api/proxy/test', { method: 'POST', body: '{}' });
+    const data = await api('/api/proxy/test', {
+      method: 'POST',
+      body: JSON.stringify({ proxy: $('configProxy').value.trim() }),
+    });
     if (data.ok && data.latencyMs !== undefined && data.latencyMs !== null) {
       $('proxyValue').textContent = `${data.latencyMs}ms`;
     } else {
@@ -695,6 +790,7 @@ async function boot() {
   $('loginForm').addEventListener('submit', login);
   $('themeToggle').addEventListener('click', () => setTheme(state.theme === 'dark' ? 'light' : 'dark'));
   $('refreshButton').addEventListener('click', () => void refreshStatus());
+  $('serviceToggleButton').addEventListener('click', () => void toggleService());
   $('runButton').addEventListener('click', () => void runNow());
   $('clearLogsButton').addEventListener('click', () => void clearLogs());
   $('proxyTestButton').addEventListener('click', () => void testProxy());
@@ -702,8 +798,10 @@ async function boot() {
   $('configForm').addEventListener('input', () => {
     state.configDirty = true;
     $('configSaveState').textContent = '有未保存修改';
+    syncProxyTestButton();
   });
   $('configForm').addEventListener('submit', saveConfig);
+  $('logMaxLinesInput').addEventListener('input', scheduleLogSettingsSave);
   const session = await api('/api/auth/session').catch(() => ({ authenticated: false, authEnabled: true }));
   state.authEnabled = Boolean(session.authEnabled);
   state.authenticated = Boolean(session.authenticated);
