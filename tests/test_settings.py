@@ -19,6 +19,13 @@ class SettingsTests(unittest.TestCase):
         env_path.write_text(content, encoding="utf-8")
         return env_path
 
+    def _make_config_file(self, content: str) -> Path:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        config_path = Path(temp_dir.name) / "config.yml"
+        config_path.write_text(content, encoding="utf-8")
+        return config_path
+
     def test_load_settings_reads_required_values(self):
         with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret"}, clear=True):
             settings = load_settings()
@@ -62,6 +69,28 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.cpa_endpoint, "https://shell.example.com")
         self.assertEqual(settings.cpa_token, "shell-secret")
         self.assertEqual(settings.worker_threads, 12)
+
+    def test_config_file_overrides_environment_variables(self):
+        config_file = self._make_config_file(
+            "cpa:\n"
+            "  endpoint: https://config.example.com\n"
+            "  token: config-secret\n"
+            "  worker_threads: 3\n"
+            "webui:\n"
+            "  enabled: true\n"
+            "  port: 9091\n"
+        )
+        with patch.dict(
+            os.environ,
+            {"CPA_ENDPOINT": "https://shell.example.com", "CPA_TOKEN": "shell-secret", "CPA_WORKER_THREADS": "12", "WEBUI_ENABLED": "false"},
+            clear=True,
+        ):
+            settings = load_settings(config_file=config_file)
+        self.assertEqual(settings.cpa_endpoint, "https://config.example.com")
+        self.assertEqual(settings.cpa_token, "config-secret")
+        self.assertEqual(settings.worker_threads, 3)
+        self.assertTrue(settings.webui_enabled)
+        self.assertEqual(settings.app_port, 9091)
 
     def test_load_settings_rejects_missing_endpoint(self):
         env_file = Path("does-not-exist.env")

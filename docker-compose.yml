@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     ports:
       - "${APP_PORT:-8080}:${APP_PORT:-8080}"
+    volumes:
+      - ./config.yml:/app/config.yml:ro
     environment:
       CPA_ENDPOINT: ${CPA_ENDPOINT}
       CPA_TOKEN: ${CPA_TOKEN}

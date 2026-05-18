@@ -15,7 +15,7 @@ It does not create tokens. Instead, it continuously maintains **existing codex t
 - check whether a token is still valid
 - disable or re-enable tokens based on the actual quota windows returned by usage
 - optionally refresh disabled tokens that are close to expiry
-- support `.env` configuration, Docker, and GitHub Actions CI
+- support `config.yml`, `.env`, Docker, and GitHub Actions CI
 
 ## Who this is for
 
@@ -113,20 +113,22 @@ That means:
 
 ## 4. Configuration
 
-The project now **uses `.env` only**.
+The project supports `config.yml`, environment variables, and `.env`. Precedence from highest to lowest:
 
-These legacy files are no longer used:
+1. `config.yml`
+2. environment variables, including values injected by `docker-compose.yml`
+3. `.env`
+4. defaults
 
-- `config.json`
-- `config.example.json`
+The committed `config.yml` is fully commented by default, so it does not override environment variables until you uncomment and set values. Use it when you want the WebUI and runtime policy to be changed by editing a config file.
 
-First copy the template:
+You can also keep using the `.env` template:
 
 ```bash
 cp .env.example .env
 ```
 
-Then edit `.env`.
+Then edit `.env`, or edit `config.yml` directly.
 
 ### Configuration fields
 
@@ -148,9 +150,9 @@ Then edit `.env`.
 - `LOGIN_PASSWORD`: required when `AUTH_ENABLED=true`
 - `AUTH_SESSION_TTL`: login session lifetime, default `168h`, supports `s/m/h/d` suffixes
 
-The `.env.example` file already includes bilingual comments for direct editing.
+The `config.yml` and `.env.example` files include comments for direct editing.
 
-Automatic refresh is enabled by default, but the keeper still refreshes only tokens that remain disabled after quota handling; enabled tokens are left to CPA's own auto-refresh logic. If you need to avoid competing with another writer rotating the same shared `refresh_token`, set it to `false` in `.env`.
+Automatic refresh is enabled by default, but the keeper still refreshes only tokens that remain disabled after quota handling; enabled tokens are left to CPA's own auto-refresh logic. If you need to avoid competing with another writer rotating the same shared `refresh_token`, set it to `false` in `config.yml` or `.env`.
 
 ---
 
@@ -186,13 +188,13 @@ python main.py
 
 ### WebUI
 
-The built-in WebUI keeps the daemon inspection loop and adds a status dashboard, recent logs, manual inspection trigger, and codex token list loading:
+The built-in WebUI keeps the daemon inspection loop and adds a status dashboard, recent logs, and manual inspection trigger:
 
 ```bash
 WEBUI_ENABLED=true python main.py
 ```
 
-You can also override `.env` from the CLI:
+You can also override configuration from the CLI:
 
 ```bash
 python main.py --web
@@ -219,7 +221,7 @@ python main.py --once --dry-run
 
 ## 6. Docker deployment
 
-The project supports Docker, and configuration still comes only from `.env` / environment variables.
+The project supports Docker. `docker-compose.yml` mounts `./config.yml` into the container, and `config.yml` takes precedence over environment values injected by Compose.
 
 ### Build the image
 
@@ -250,13 +252,13 @@ Copy the template first:
 cp .env.example .env
 ```
 
-Then edit `.env` and start:
+Then edit `.env` or `config.yml` and start:
 
 ```bash
 docker compose up -d --build
 ```
 
-Compose maps `${APP_PORT:-8080}` by default and enables `WEBUI_ENABLED=true`. Then open:
+Compose maps `${APP_PORT:-8080}` by default and enables `WEBUI_ENABLED=true`. If `webui.port` or `APP_PORT` is set in `config.yml`, the application uses that internal port; the published port is still determined by `${APP_PORT:-8080}` when Compose starts. Then open:
 
 ```text
 http://localhost:8080
@@ -297,7 +299,7 @@ At the end of each round, it prints a summary including:
 
 The current version already includes several protections:
 
-- strict `.env` validation at startup
+- strict configuration validation at startup
 - range validation for numeric fields
 - separate timeouts for CPA API and usage API
 - limited retries for transient network / 5xx failures
@@ -369,6 +371,7 @@ CPACodexKeeper/
 │  ├─ settings.py
 │  └─ utils.py
 ├─ tests/
+├─ config.yml
 ├─ .env.example
 ├─ docker-compose.yml
 ├─ Dockerfile
@@ -384,7 +387,7 @@ CPACodexKeeper/
 
 ### Configuration error at startup
 
-Usually caused by missing `.env` fields or invalid values.
+Usually caused by missing fields or invalid values in `config.yml` / `.env`.
 
 Check:
 
@@ -418,4 +421,4 @@ This project is meant for **authorized internal maintenance scenarios**, such as
 - internal token-pool maintenance
 - authorized inspection and cleanup jobs
 
-Real credentials should never be committed to version control. Keep `.env` local or inject it securely in your deployment environment.
+Real credentials should never be committed to version control. Keep real `config.yml` or `.env` values local, or inject them securely in your deployment environment.

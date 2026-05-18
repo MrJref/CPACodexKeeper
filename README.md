@@ -15,7 +15,7 @@ CPACodexKeeper 是一个用于**巡检和维护 CPA 管理端中的 codex token*
 - 检查 token 是否失效
 - 按实际返回的 quota 窗口自动禁用或启用
 - 可选地刷新已禁用且即将过期的 token
-- 支持 `.env` 配置、Docker 和 GitHub Actions CI
+- 支持 `config.yml`、`.env`、Docker 和 GitHub Actions CI
 
 ## 适合谁用
 
@@ -114,20 +114,22 @@ CPACodexKeeper 会把这些维护动作自动化，减少人工巡检和手工�
 
 ## 4. 配置方式
 
-项目现在**只保留 `.env` 配置方式**。
+项目支持 `config.yml`、环境变量和 `.env`。优先级从高到低：
 
-已经不再使用：
+1. `config.yml`
+2. 环境变量，包括 `docker-compose.yml` 注入的配置
+3. `.env`
+4. 默认值
 
-- `config.json`
-- `config.example.json`
+仓库内的 `config.yml` 默认是全注释模板，不会覆盖环境变量。需要让页面和运行策略通过配置文件调整时，取消注释并填写对应字段即可。
 
-先复制模板：
+也可以继续复制 `.env` 模板：
 
 ```bash
 cp .env.example .env
 ```
 
-然后编辑 `.env`。
+然后编辑 `.env`，或直接编辑 `config.yml`。
 
 ### 配置项说明
 
@@ -149,9 +151,9 @@ cp .env.example .env
 - `LOGIN_PASSWORD`：启用 `AUTH_ENABLED=true` 时必填的登录密码
 - `AUTH_SESSION_TTL`：登录 session 有效期，默认 `168h`，支持 `s/m/h/d` 后缀
 
-推荐直接参考 `.env.example` 中的中英双语注释填写。
+推荐直接参考 `config.yml` 或 `.env.example` 中的注释填写。
 
-默认开启自动刷新，但 keeper 仍只会刷新当前轮处理后仍处于禁用状态的 token；启用状态 token 交给 CPA 自己的自动刷新逻辑处理。如果你需要避免与其他刷新写入方竞争，可以在 `.env` 里显式设成 `false`。
+默认开启自动刷新，但 keeper 仍只会刷新当前轮处理后仍处于禁用状态的 token；启用状态 token 交给 CPA 自己的自动刷新逻辑处理。如果你需要避免与其他刷新写入方竞争，可以在 `config.yml` 或 `.env` 里显式设成 `false`。
 
 ---
 
@@ -187,13 +189,13 @@ python main.py
 
 ### WebUI
 
-内置 WebUI 会沿用守护模式巡检，并提供状态面板、最近日志、手动触发巡检和 codex token 列表读取：
+内置 WebUI 会沿用守护模式巡检，并提供状态面板、最近日志和手动触发巡检：
 
 ```bash
 WEBUI_ENABLED=true python main.py
 ```
 
-也可以用命令行覆盖 `.env`：
+也可以用命令行覆盖配置：
 
 ```bash
 python main.py --web
@@ -220,7 +222,7 @@ python main.py --once --dry-run
 
 ## 6. Docker 部署
 
-项目支持通过 Docker 运行，配置同样只来自 `.env` / 环境变量。
+项目支持通过 Docker 运行。`docker-compose.yml` 会挂载 `./config.yml` 到容器内，且 `config.yml` 的优先级高于 Compose 注入的环境变量。
 
 ### 构建镜像
 
@@ -251,13 +253,13 @@ docker run -d \
 cp .env.example .env
 ```
 
-然后编辑 `.env`，再启动：
+然后编辑 `.env` 或 `config.yml`，再启动：
 
 ```bash
 docker compose up -d --build
 ```
 
-Compose 默认映射 `${APP_PORT:-8080}` 并启用 `WEBUI_ENABLED=true`。启动后访问：
+Compose 默认映射 `${APP_PORT:-8080}` 并启用 `WEBUI_ENABLED=true`。如果 `config.yml` 中配置了 `webui.port` 或 `APP_PORT`，应用内部端口会使用配置文件值；端口映射仍由 Compose 启动时的 `${APP_PORT:-8080}` 决定。启动后访问：
 
 ```text
 http://localhost:8080
@@ -298,7 +300,7 @@ http://localhost:8080
 
 当前版本已经补了几项关键保护：
 
-- 启动时强校验 `.env` 配置
+- 启动时强校验配置
 - 对数值配置做范围检查
 - 对 CPA API 和 usage API 设置独立超时
 - 对临时网络错误和 5xx 做有限重试
@@ -370,6 +372,7 @@ CPACodexKeeper/
 │  ├─ settings.py
 │  └─ utils.py
 ├─ tests/
+├─ config.yml
 ├─ .env.example
 ├─ docker-compose.yml
 ├─ Dockerfile
@@ -385,7 +388,7 @@ CPACodexKeeper/
 
 ### 启动时报配置错误
 
-通常是 `.env` 缺字段，或者字段格式不对。
+通常是 `config.yml` / `.env` 缺字段，或者字段格式不对。
 
 重点检查：
 
@@ -419,4 +422,4 @@ CPACodexKeeper/
 - 内部 token 池维护
 - 已获得授权的自动巡检和清理任务
 
-不建议将真实凭据提交到版本控制中。`.env` 应始终保留在本地或安全的部署环境中。
+不建议将真实凭据提交到版本控制中。真实 `config.yml` 或 `.env` 应保留在本地或安全的部署环境中。

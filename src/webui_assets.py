@@ -77,18 +77,6 @@ INDEX_HTML = """<!doctype html>
       </section>
 
       <section class="content-grid">
-        <article class="card">
-          <div class="section-head">
-            <div>
-              <div class="card-kicker">Tokens</div>
-              <h2>Codex Token 列表</h2>
-            </div>
-            <button id="loadTokensButton" class="pill-btn" type="button">读取列表</button>
-          </div>
-          <div id="tokensEmpty" class="empty-state">点击“读取列表”从 CPA 管理端拉取当前 codex token。</div>
-          <div id="tokenList" class="token-list"></div>
-        </article>
-
         <article class="card log-card">
           <div class="section-head">
             <div>
@@ -284,7 +272,7 @@ button, input { font: inherit; }
 }
 .stat-card span { display: block; color: var(--text-secondary); font-size: 13px; font-weight: 700; }
 .stat-card strong { display: block; margin-top: 16px; font-size: 32px; letter-spacing: -.04em; }
-.content-grid { display: grid; grid-template-columns: minmax(320px, .9fr) minmax(0, 1.1fr); gap: 18px; align-items: start; }
+.content-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .content-grid .card { padding: 20px; }
 .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
 .muted { color: var(--text-tertiary); font-size: 13px; }
@@ -295,18 +283,6 @@ button, input { font: inherit; }
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
 }
-.token-list { display: grid; gap: 10px; }
-.token-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--border-color);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--bg-secondary) 68%, transparent);
-}
-.token-name { font-weight: 900; word-break: break-all; }
-.token-meta { margin-top: 6px; color: var(--text-secondary); font-size: 13px; }
 .log-output {
   min-height: 460px;
   max-height: 640px;
@@ -470,48 +446,6 @@ async function runNow() {
   }
 }
 
-function renderTokens(data) {
-  const list = $('tokenList');
-  const empty = $('tokensEmpty');
-  list.innerHTML = '';
-  const tokens = data.tokens || [];
-  if (!tokens.length) {
-    empty.textContent = '未读取到 codex token，或 CPA 管理端暂无 codex 类型凭证。';
-    empty.classList.remove('hidden');
-    return;
-  }
-  empty.classList.add('hidden');
-  for (const token of tokens) {
-    const item = document.createElement('div');
-    item.className = 'token-item';
-    const disabled = token.disabled ? '已禁用' : '启用中';
-    item.innerHTML = `
-      <div>
-        <div class="token-name"></div>
-        <div class="token-meta">${token.email || '-'} · ${token.expired || '过期时间未知'}</div>
-      </div>
-      <span class="badge ${token.disabled ? 'warn' : 'ok'}">${disabled}</span>
-    `;
-    item.querySelector('.token-name').textContent = token.name || 'unknown';
-    list.appendChild(item);
-  }
-}
-
-async function loadTokens() {
-  $('loadTokensButton').disabled = true;
-  try {
-    const data = await api('/api/tokens');
-    renderTokens(data);
-  } catch (error) {
-    if (error.message !== 'AUTH_REQUIRED') {
-      $('tokensEmpty').textContent = error.message;
-      $('tokensEmpty').classList.remove('hidden');
-    }
-  } finally {
-    $('loadTokensButton').disabled = false;
-  }
-}
-
 async function login(event) {
   event.preventDefault();
   $('loginError').classList.add('hidden');
@@ -541,7 +475,6 @@ async function boot() {
   $('refreshButton').addEventListener('click', () => void refreshStatus());
   $('runButton').addEventListener('click', () => void runNow());
   $('logoutButton').addEventListener('click', () => void logout());
-  $('loadTokensButton').addEventListener('click', () => void loadTokens());
   const session = await api('/api/auth/session').catch(() => ({ authenticated: false, authEnabled: true }));
   state.authEnabled = Boolean(session.authEnabled);
   state.authenticated = Boolean(session.authenticated);

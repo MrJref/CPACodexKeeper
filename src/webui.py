@@ -175,21 +175,6 @@ class KeeperRuntime:
                 "timestamp": utc_now_iso(),
             }
 
-    def token_summary(self) -> dict[str, Any]:
-        tokens = self.keeper.get_token_list()
-        sanitized = [
-            {
-                "name": token.get("name", ""),
-                "type": token.get("type", ""),
-                "email": token.get("email", ""),
-                "disabled": bool(token.get("disabled", False)),
-                "expired": token.get("expired", ""),
-            }
-            for token in tokens
-        ]
-        return {"total": len(sanitized), "tokens": sanitized, "timestamp": utc_now_iso()}
-
-
 class WebUIService:
     def __init__(self, runtime: KeeperRuntime) -> None:
         self.runtime = runtime
@@ -283,11 +268,6 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             if not self._require_auth():
                 return
             self._send_json(self.service.runtime.status())
-            return
-        if self.path == "/api/tokens":
-            if not self._require_auth():
-                return
-            self._send_json(self.service.runtime.token_summary())
             return
         self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
 

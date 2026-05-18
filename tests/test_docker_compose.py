@@ -16,3 +16,4 @@ class DockerComposeTests(unittest.TestCase):
         self.assertIn("AUTH_ENABLED: ${AUTH_ENABLED:-false}", compose_text)
         self.assertIn("LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}", compose_text)
         self.assertIn('"${APP_PORT:-8080}:${APP_PORT:-8080}"', compose_text)
+        self.assertIn("./config.yml:/app/config.yml:ro", compose_text)
