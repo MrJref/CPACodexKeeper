@@ -6,13 +6,13 @@ services:
     ports:
       - "${APP_PORT:-8080}:${APP_PORT:-8080}"
     volumes:
-      - ./config.yml:/app/config.yml:ro
+      - ./config.yml:/app/config.yml
     environment:
       CPA_ENDPOINT: ${CPA_ENDPOINT}
       CPA_TOKEN: ${CPA_TOKEN}
       CPA_PROXY: ${CPA_PROXY:-}
       CPA_INTERVAL: ${CPA_INTERVAL:-1800}
-      CPA_QUOTA_THRESHOLD: ${CPA_QUOTA_THRESHOLD:-100}
+      CPA_QUOTA_THRESHOLD: ${CPA_QUOTA_THRESHOLD:-1}
       CPA_EXPIRY_THRESHOLD_DAYS: ${CPA_EXPIRY_THRESHOLD_DAYS:-3}
       CPA_ENABLE_REFRESH: ${CPA_ENABLE_REFRESH:-true}
       CPA_HTTP_TIMEOUT: ${CPA_HTTP_TIMEOUT:-30}

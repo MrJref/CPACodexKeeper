@@ -64,9 +64,9 @@ Each inspection round follows this sequence:
 5. call the OpenAI usage endpoint
 6. delete the token if usage returns `401` or `402`, meaning the token is invalid or the workspace is deactivated
 7. if usage returns two quota windows, evaluate them by their actual meaning
-8. disable when either window reaches the threshold, and re-enable only when both drop below it
+8. disable when either window's remaining quota is below the threshold, and re-enable only when both are at or above it
 9. if the token has **no `refresh_token`** and is already expired, delete it directly
-10. if the token has **no `refresh_token`** and the checked quota reaches the threshold, delete it directly
+10. if the token has **no `refresh_token`** and remaining quota is below the threshold, delete it directly
 11. if automatic refresh is explicitly enabled and the token is still disabled after quota handling and close to expiry, refresh it
 12. upload the refreshed token payload back to CPA
 
@@ -87,27 +87,28 @@ When the usage response includes both windows:
 
 In that case, the program will:
 
-- disable when either `primary_window.used_percent` or `secondary_window.used_percent` reaches the threshold
-- re-enable only when both windows are below the threshold
+- convert `primary_window.used_percent` and `secondary_window.used_percent` to remaining quota
+- disable when either window's remaining quota is below the threshold
+- re-enable only when both windows are at or above the threshold
 - automatically send the `Chatgpt-Account-Id` header
 
 ### Non-team or no weekly window
 
 If no weekly window exists:
 
-- the program falls back to `primary_window.used_percent`
+- the program falls back to `primary_window.used_percent` and converts it to remaining quota
 
 ### Default threshold
 
 Default:
 
-- `CPA_QUOTA_THRESHOLD=100`
+- `CPA_QUOTA_THRESHOLD=1`
 
 That means:
 
-- disable only when the checked quota reaches 100%
-- re-enable when it drops below 100%
-- but if a token has no `refresh_token`, reaching the threshold deletes it instead of only disabling it
+- disable only when remaining quota is below 1%, which normally means the quota is exhausted at 0%
+- setting it to `30` means disabling when remaining quota is below 30%, and re-enabling when it is at or above 30%
+- but if a token has no `refresh_token`, reaching the remaining-quota threshold deletes it instead of only disabling it
 
 ---
 
@@ -136,7 +137,7 @@ Then edit `.env`, or edit `config.yml` directly.
 - `CPA_TOKEN`: CPA management token
 - `CPA_PROXY`: optional HTTP/HTTPS proxy
 - `CPA_INTERVAL`: daemon interval in seconds, default `1800`
-- `CPA_QUOTA_THRESHOLD`: disable threshold, default `100`
+- `CPA_QUOTA_THRESHOLD`: remaining-quota disable threshold, default `1`; for example, `30` disables when remaining quota is below 30%
 - `CPA_EXPIRY_THRESHOLD_DAYS`: refresh threshold in days for disabled tokens, default `3`
 - `CPA_ENABLE_REFRESH`: whether automatic refresh for disabled tokens is enabled, default `true`
 - `CPA_HTTP_TIMEOUT`: timeout for CPA API requests, default `30`
@@ -189,7 +190,7 @@ python main.py
 
 ### WebUI
 
-The built-in WebUI keeps the daemon inspection loop and adds a status dashboard, recent logs, log clearing, manual inspection trigger, and proxy latency test:
+The built-in WebUI keeps the daemon inspection loop and adds a status dashboard, recent logs, log clearing, manual inspection trigger, proxy latency test, and hot-updated `config.yml` editing:
 
 ```bash
 WEBUI_ENABLED=true python main.py
@@ -222,7 +223,7 @@ python main.py --once --dry-run
 
 ## 6. Docker deployment
 
-The project supports Docker. `docker-compose.yml` mounts `./config.yml` into the container, and `config.yml` takes precedence over environment values injected by Compose.
+The project supports Docker. `docker-compose.yml` mounts `./config.yml` into the container as writable so the WebUI can save configuration, and `config.yml` takes precedence over environment values injected by Compose.
 
 ### Build the image
 

@@ -1,5 +1,7 @@
+import os
 import pathlib
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
@@ -94,6 +96,37 @@ class WebUITests(unittest.TestCase):
 
         self.assertEqual(runtime.status()["settings"]["logMaxLines"], 2)
         self.assertEqual(runtime.status()["logs"], ["two", "three"])
+
+    def test_runtime_update_config_writes_file_and_hot_reloads_settings(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = pathlib.Path(temp_dir) / "config.yml"
+            config_path.write_text(
+                "cpa:\n"
+                "  endpoint: https://example.com\n"
+                "  token: secret\n"
+                "  quota_threshold: 0\n"
+                "webui:\n"
+                "  log_max_lines: 5\n",
+                encoding="utf-8",
+            )
+            settings = Settings(
+                cpa_endpoint="https://example.com",
+                cpa_token="secret",
+                quota_threshold=0,
+                log_max_lines=5,
+            )
+            runtime = KeeperRuntime(settings)
+
+            with patch("src.webui.PROJECT_CONFIG_FILE", config_path), patch("src.settings.PROJECT_CONFIG_FILE", config_path), patch.dict(os.environ, {}, clear=True):
+                result = runtime.update_config({"cpaEndpoint": "https://example.com", "quotaThreshold": 30, "logMaxLines": 2})
+
+            self.assertEqual(runtime.settings.quota_threshold, 30)
+            self.assertEqual(runtime.keeper.settings.quota_threshold, 30)
+            self.assertEqual(runtime.logger.max_lines, 2)
+            self.assertEqual(result["values"]["quotaThreshold"], 30)
+            text = config_path.read_text(encoding="utf-8")
+            self.assertIn("  quota_threshold: 30\n", text)
+            self.assertIn("  log_max_lines: 2\n", text)
 
     def test_proxy_test_reports_unconfigured_proxy(self):
         settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret")

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from src.settings import SettingsError, load_settings
+from src.settings import SettingsError, load_settings, update_config_file
 
 
 class SettingsTests(unittest.TestCase):
@@ -32,6 +32,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.cpa_endpoint, "https://example.com")
         self.assertEqual(settings.cpa_token, "secret")
         self.assertEqual(settings.interval_seconds, 1800)
+        self.assertEqual(settings.quota_threshold, 1)
         self.assertEqual(settings.worker_threads, 8)
         self.assertTrue(settings.enable_refresh)
         self.assertFalse(settings.webui_enabled)
@@ -138,3 +139,25 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "LOG_MAX_LINES": "0"}, clear=True):
             with self.assertRaises(SettingsError):
                 load_settings(env_file=env_file)
+
+    def test_update_config_file_writes_active_sections(self):
+        config_file = self._make_config_file(
+            "# template\n"
+            "# cpa:\n"
+            "#   quota_threshold: 1\n"
+        )
+
+        update_config_file(
+            {
+                "cpa": {"endpoint": "https://config.example.com", "token": "secret", "quota_threshold": 30},
+                "webui": {"enabled": True, "log_max_lines": 42},
+            },
+            config_file=config_file,
+        )
+
+        text = config_file.read_text(encoding="utf-8")
+        self.assertIn("cpa:\n", text)
+        self.assertIn('  endpoint: "https://config.example.com"\n', text)
+        self.assertIn("  quota_threshold: 30\n", text)
+        self.assertIn("webui:\n", text)
+        self.assertIn("  enabled: true\n", text)

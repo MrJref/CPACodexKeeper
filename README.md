@@ -64,9 +64,9 @@ CPACodexKeeper 会把这些维护动作自动化，减少人工巡检和手工�
 5. 调用 OpenAI usage 接口检查可用性和限额
 6. 如果 usage 返回 `401` 或 `402`，则判定 token 无效或 workspace 已停用，并删除
 7. 如果 usage 返回中包含两个 quota 窗口，则按窗口实际含义判断
-8. 只要任一窗口达到阈值，就会禁用；只有两个窗口都低于阈值时才会重新启用
+8. 只要任一窗口剩余额度小于阈值，就会禁用；只有两个窗口剩余额度都不低于阈值时才会重新启用
 9. 如果 token **没有 `refresh_token`**，并且已经过期，则直接删除
-10. 如果 token **没有 `refresh_token`**，并且检测额度已达到阈值，则直接删除
+10. 如果 token **没有 `refresh_token`**，并且剩余额度小于阈值，则直接删除
 11. 如果显式启用了自动刷新，并且 token 在当前轮处理后仍是禁用状态且临近过期，则尝试刷新
 12. 刷新成功后将最新 token 数据上传回 CPA
 
@@ -87,28 +87,28 @@ CPACodexKeeper 会把这些维护动作自动化，减少人工巡检和手工�
 
 此时程序会：
 
-- 同时检查 `primary_window.used_percent` 与 `secondary_window.used_percent`
-- 只要任一窗口达到阈值，就会触发禁用
-- 只有两个窗口都低于阈值时，已禁用 token 才会被重新启用
+- 同时检查 `primary_window.used_percent` 与 `secondary_window.used_percent` 并换算剩余额度
+- 只要任一窗口剩余额度小于阈值，就会触发禁用
+- 只有两个窗口剩余额度都不低于阈值时，已禁用 token 才会被重新启用
 - 自动携带 `Chatgpt-Account-Id` 请求头
 
 ### 非 Team / 无周限额模式
 
 如果 usage 中没有周限额窗口：
 
-- 程序会回退到 `primary_window.used_percent` 进行判断
+- 程序会回退到 `primary_window.used_percent` 并换算剩余额度进行判断
 
 ### 默认阈值
 
 默认：
 
-- `CPA_QUOTA_THRESHOLD=100`
+- `CPA_QUOTA_THRESHOLD=1`
 
 也就是：
 
-- 达到 100% 才禁用
-- 低于 100% 时可重新启用
-- 但如果 token 没有 `refresh_token`，达到阈值时会直接删除，而不是仅禁用
+- 剩余额度低于 1% 时才禁用，也就是通常的 0% 耗尽场景
+- 配置为 `30` 时表示剩余额度小于 30% 就禁用，不低于 30% 时可重新启用
+- 但如果 token 没有 `refresh_token`，剩余额度达到阈值时会直接删除，而不是仅禁用
 
 ---
 
@@ -137,7 +137,7 @@ cp .env.example .env
 - `CPA_TOKEN`：CPA 管理 token
 - `CPA_PROXY`：可选代理
 - `CPA_INTERVAL`：守护模式轮询间隔，默认 `1800`
-- `CPA_QUOTA_THRESHOLD`：禁用阈值，默认 `100`
+- `CPA_QUOTA_THRESHOLD`：剩余额度禁用阈值，默认 `1`；例如 `30` 表示剩余额度小于 30% 时禁用
 - `CPA_EXPIRY_THRESHOLD_DAYS`：禁用 token 的刷新阈值天数，默认 `3`
 - `CPA_ENABLE_REFRESH`：是否启用对禁用 token 的自动刷新，默认 `true`
 - `CPA_HTTP_TIMEOUT`：CPA API 请求超时秒数，默认 `30`
@@ -190,7 +190,7 @@ python main.py
 
 ### WebUI
 
-内置 WebUI 会沿用守护模式巡检，并提供状态面板、最近日志、清空日志、手动触发巡检和代理延迟检测：
+内置 WebUI 会沿用守护模式巡检，并提供状态面板、最近日志、清空日志、手动触发巡检、代理延迟检测和 `config.yml` 热更新配置：
 
 ```bash
 WEBUI_ENABLED=true python main.py
@@ -223,7 +223,7 @@ python main.py --once --dry-run
 
 ## 6. Docker 部署
 
-项目支持通过 Docker 运行。`docker-compose.yml` 会挂载 `./config.yml` 到容器内，且 `config.yml` 的优先级高于 Compose 注入的环境变量。
+项目支持通过 Docker 运行。`docker-compose.yml` 会以可写方式挂载 `./config.yml` 到容器内，便于 WebUI 保存配置；且 `config.yml` 的优先级高于 Compose 注入的环境变量。
 
 ### 构建镜像
 

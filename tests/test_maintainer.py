@@ -17,7 +17,7 @@ class MaintainerTests(unittest.TestCase):
         self.settings = Settings(
             cpa_endpoint="https://example.com",
             cpa_token="secret",
-            quota_threshold=100,
+            quota_threshold=30,
             expiry_threshold_days=3,
         )
         self.maintainer = CPACodexKeeper(settings=self.settings, dry_run=True)
@@ -97,7 +97,7 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(result, "dead")
         self.assertEqual(self.maintainer.stats.dead, 1)
 
-    def test_process_token_disables_when_weekly_quota_reaches_threshold(self):
+    def test_process_token_disables_when_weekly_remaining_quota_reaches_threshold(self):
         self.maintainer.get_token_detail = Mock(return_value={
             "email": "a@example.com",
             "disabled": False,
@@ -111,7 +111,7 @@ class MaintainerTests(unittest.TestCase):
                 "plan_type": "team",
                 "rate_limit": {
                     "primary_window": {"used_percent": 10, "limit_window_seconds": 18000},
-                    "secondary_window": {"used_percent": 100, "limit_window_seconds": 604800},
+                    "secondary_window": {"used_percent": 71, "limit_window_seconds": 604800},
                 },
                 "credits": {"has_credits": False},
             }
@@ -125,7 +125,7 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(kwargs["disabled"], True)
         self.assertEqual(self.maintainer.stats.disabled, 1)
 
-    def test_process_token_disables_when_primary_quota_reaches_threshold_even_if_weekly_is_below(self):
+    def test_process_token_disables_when_primary_remaining_quota_reaches_threshold_even_if_weekly_is_above(self):
         self.maintainer.get_token_detail = Mock(return_value={
             "email": "a@example.com",
             "disabled": False,
@@ -155,7 +155,7 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(kwargs["disabled"], True)
         self.assertEqual(self.maintainer.stats.disabled, 1)
 
-    def test_process_token_enables_when_disabled_and_weekly_quota_below_threshold(self):
+    def test_process_token_enables_when_disabled_and_all_remaining_quota_above_threshold(self):
         self.maintainer.get_token_detail = Mock(return_value={
             "email": "a@example.com",
             "disabled": True,
@@ -167,7 +167,7 @@ class MaintainerTests(unittest.TestCase):
             "json": {
                 "plan_type": "team",
                 "rate_limit": {
-                    "primary_window": {"used_percent": 90, "limit_window_seconds": 18000},
+                    "primary_window": {"used_percent": 60, "limit_window_seconds": 18000},
                     "secondary_window": {"used_percent": 0, "limit_window_seconds": 604800},
                 },
                 "credits": {"has_credits": False},
@@ -272,14 +272,14 @@ class MaintainerTests(unittest.TestCase):
         self.assertTrue(captured_lines)
         emitted = "\n".join(captured_lines[0])
         self.assertIn("Week: 100%", emitted)
-        self.assertIn("Week额度 100% >= 100%，准备禁用", emitted)
+        self.assertIn("Week剩余额度 0% < 30%，准备禁用", emitted)
         self.assertNotIn("5h: 100%", emitted)
 
     def test_process_token_does_not_refresh_when_refresh_disabled(self):
         settings = Settings(
             cpa_endpoint="https://example.com",
             cpa_token="secret",
-            quota_threshold=100,
+            quota_threshold=30,
             expiry_threshold_days=3,
             enable_refresh=False,
         )
@@ -322,7 +322,7 @@ class MaintainerTests(unittest.TestCase):
         settings = Settings(
             cpa_endpoint="https://example.com",
             cpa_token="secret",
-            quota_threshold=100,
+            quota_threshold=30,
             expiry_threshold_days=3,
             enable_refresh=True,
         )
@@ -365,7 +365,7 @@ class MaintainerTests(unittest.TestCase):
         settings = Settings(
             cpa_endpoint="https://example.com",
             cpa_token="secret",
-            quota_threshold=100,
+            quota_threshold=30,
             expiry_threshold_days=3,
             enable_refresh=True,
         )

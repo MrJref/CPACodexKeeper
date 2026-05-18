@@ -1,10 +1,12 @@
 import os
 from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 
 DEFAULT_INTERVAL_SECONDS = 1800
-DEFAULT_QUOTA_THRESHOLD = 100
+DEFAULT_QUOTA_THRESHOLD = 1
 DEFAULT_EXPIRY_THRESHOLD_DAYS = 3
 DEFAULT_USAGE_TIMEOUT_SECONDS = 15
 DEFAULT_CPA_TIMEOUT_SECONDS = 30
@@ -221,6 +223,87 @@ def _read_duration_seconds(name: str, default: int, env_values: dict[str, str], 
 
 def _read_string(name: str, default: str, env_values: dict[str, str], config_values: dict[str, str]) -> str:
     return (_get_config_value(name, env_values, config_values) or default).strip()
+
+
+def _format_yaml_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return ""
+    text = str(value)
+    if text == "":
+        return ""
+    if any(char in text for char in ["#", ":", "\n", '"', "'"]) or text != text.strip():
+        escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return text
+
+
+def _find_active_section(lines: list[str], section: str) -> tuple[int, int] | None:
+    section_name = section.lower()
+    for idx, raw_line in enumerate(lines):
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#") or ":" not in stripped:
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        key, raw_value = stripped.split(":", 1)
+        if indent == 0 and key.strip().lower() == section_name and _normalize_yaml_value(raw_value.strip()) == "":
+            end = len(lines)
+            for next_idx in range(idx + 1, len(lines)):
+                next_line = lines[next_idx]
+                next_stripped = next_line.strip()
+                if not next_stripped or next_stripped.startswith("#"):
+                    continue
+                next_indent = len(next_line) - len(next_line.lstrip(" "))
+                if next_indent == 0:
+                    end = next_idx
+                    break
+            return idx, end
+    return None
+
+
+def update_config_file(
+    updates: Mapping[str, Mapping[str, Any]],
+    config_file: Path | None = None,
+) -> None:
+    target = config_file or PROJECT_CONFIG_FILE
+    lines = target.read_text(encoding="utf-8").splitlines() if target.exists() else []
+
+    for section, values in updates.items():
+        if not values:
+            continue
+        normalized_values = {key.lower(): _format_yaml_scalar(value) for key, value in values.items()}
+        section_range = _find_active_section(lines, section)
+        if section_range is None:
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.append(f"{section}:")
+            for key, value in normalized_values.items():
+                lines.append(f"  {key}: {value}")
+            continue
+
+        start, end = section_range
+        present_keys: set[str] = set()
+        for idx in range(start + 1, end):
+            raw_line = lines[idx]
+            stripped = raw_line.strip()
+            if not stripped or stripped.startswith("#") or ":" not in stripped:
+                continue
+            indent = len(raw_line) - len(raw_line.lstrip(" "))
+            if indent == 0:
+                continue
+            key = stripped.split(":", 1)[0].strip().lower()
+            if key in normalized_values:
+                lines[idx] = f"  {key}: {normalized_values[key]}"
+                present_keys.add(key)
+
+        insert_at = end
+        for key, value in normalized_values.items():
+            if key not in present_keys:
+                lines.insert(insert_at, f"  {key}: {value}")
+                insert_at += 1
+
+    target.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
 def load_settings(env_file: Path | None = None, config_file: Path | None = None) -> Settings:

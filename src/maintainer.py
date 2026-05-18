@@ -195,6 +195,9 @@ class CPACodexKeeper:
         logger.log("OK", f"存活 | Plan: {plan} | {quota_info}", indent=1)
         return primary_pct, secondary_pct, primary_label, secondary_label
 
+    def _remaining_percent(self, used_percent):
+        return max(0, 100 - int(used_percent or 0))
+
     def _apply_quota_policy(
         self,
         name,
@@ -207,35 +210,41 @@ class CPACodexKeeper:
         primary_label="primary_window",
         secondary_label="secondary_window",
     ):
-        primary_reached = primary_pct >= self.settings.quota_threshold
+        primary_remaining = self._remaining_percent(primary_pct)
+        secondary_remaining = None if secondary_pct is None else self._remaining_percent(secondary_pct)
+        primary_reached = primary_remaining < self.settings.quota_threshold
         secondary_present = secondary_pct is not None
-        secondary_reached = secondary_present and secondary_pct >= self.settings.quota_threshold
+        secondary_reached = secondary_present and secondary_remaining < self.settings.quota_threshold
         effective_disabled = disabled
 
         if secondary_present:
-            below_threshold = primary_pct < self.settings.quota_threshold and secondary_pct < self.settings.quota_threshold
+            below_threshold = (
+                primary_remaining >= self.settings.quota_threshold
+                and secondary_remaining is not None
+                and secondary_remaining >= self.settings.quota_threshold
+            )
             reached_parts = []
             if primary_reached:
-                reached_parts.append(f"{primary_label}额度 {primary_pct}%")
+                reached_parts.append(f"{primary_label}剩余额度 {primary_remaining}%")
             if secondary_reached:
-                reached_parts.append(f"{secondary_label}额度 {secondary_pct}%")
+                reached_parts.append(f"{secondary_label}剩余额度 {secondary_remaining}%")
             reached_summary = "、".join(reached_parts)
         else:
-            below_threshold = primary_pct < self.settings.quota_threshold
-            reached_summary = f"{primary_label}额度 {primary_pct}%"
+            below_threshold = primary_remaining >= self.settings.quota_threshold
+            reached_summary = f"{primary_label}剩余额度 {primary_remaining}%"
 
         if disabled:
             if below_threshold:
                 if secondary_present:
                     logger.log(
                         "WARN",
-                        f"已禁用且 {primary_label}/{secondary_label} 额度均已低于 {self.settings.quota_threshold}%，准备启用",
+                        f"已禁用且 {primary_label}/{secondary_label} 剩余额度均已不低于 {self.settings.quota_threshold}%，准备启用",
                         indent=1,
                     )
                 else:
                     logger.log(
                         "WARN",
-                        f"已禁用但{primary_label}额度已降至 {primary_pct}% < {self.settings.quota_threshold}%，准备启用",
+                        f"已禁用但{primary_label}剩余额度已恢复至 {primary_remaining}% >= {self.settings.quota_threshold}%，准备启用",
                         indent=1,
                     )
                 if self.set_disabled_status(name, disabled=False, logger=logger):
@@ -248,12 +257,12 @@ class CPACodexKeeper:
             if not has_refresh_token and (primary_reached or secondary_reached):
                 return self._delete_token_with_reason(
                     name,
-                    f"无 Refresh Token，且{reached_summary} >= {self.settings.quota_threshold}%，准备删除",
+                    f"无 Refresh Token，且{reached_summary} < {self.settings.quota_threshold}%，准备删除",
                     logger,
                 ), effective_disabled
             logger.log(
                 "INFO",
-                f"已禁用，{reached_summary} >= {self.settings.quota_threshold}%，保持禁用",
+                f"已禁用，{reached_summary} < {self.settings.quota_threshold}%，保持禁用",
                 indent=1,
             )
             return None, effective_disabled
@@ -262,12 +271,12 @@ class CPACodexKeeper:
             if not has_refresh_token:
                 return self._delete_token_with_reason(
                     name,
-                    f"无 Refresh Token，且{reached_summary} >= {self.settings.quota_threshold}%，准备删除",
+                    f"无 Refresh Token，且{reached_summary} < {self.settings.quota_threshold}%，准备删除",
                     logger,
                 ), effective_disabled
             logger.log(
                 "WARN",
-                f"{reached_summary} >= {self.settings.quota_threshold}%，准备禁用",
+                f"{reached_summary} < {self.settings.quota_threshold}%，准备禁用",
                 indent=1,
             )
             if self.set_disabled_status(name, disabled=True, logger=logger):
@@ -380,7 +389,7 @@ class CPACodexKeeper:
         self.logger.divider()
         self.log("INFO", "CPACodexKeeper 启动")
         self.log("INFO", f"API: {self.settings.cpa_endpoint}")
-        self.log("INFO", f"Quota threshold: {self.settings.quota_threshold}% (disable when reached)")
+        self.log("INFO", f"Remaining quota threshold: {self.settings.quota_threshold}% (disable when remaining quota is below)")
         self.log("INFO", f"Expiry threshold: {self.settings.expiry_threshold_days} days (refresh disabled auth when below)")
         self.log("INFO", f"Refresh enabled: {self.settings.enable_refresh}")
         if self.dry_run:

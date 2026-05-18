@@ -6,7 +6,7 @@
 #   token: your-management-token
 #   proxy:
 #   interval: 1800
-#   quota_threshold: 100
+#   quota_threshold: 1
 #   expiry_threshold_days: 3
 #   enable_refresh: true
 #   http_timeout: 30

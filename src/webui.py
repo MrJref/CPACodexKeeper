@@ -13,7 +13,7 @@ from curl_cffi import requests
 
 from .logging_utils import ConsoleLogger
 from .maintainer import CPACodexKeeper
-from .settings import Settings
+from .settings import PROJECT_CONFIG_FILE, Settings, SettingsError, load_settings, update_config_file
 from .webui_assets import APP_CSS, APP_JS, INDEX_HTML
 
 
@@ -40,6 +40,83 @@ def proxy_label(proxy: str | None) -> str | None:
     return urlunsplit((parsed.scheme, netloc, "", "", ""))
 
 
+def _payload_int(payload: dict[str, Any], name: str, *, minimum: int = 0, maximum: int | None = None) -> int | None:
+    if name not in payload:
+        return None
+    raw = payload.get(name)
+    if raw in (None, ""):
+        raise ValueError(f"{name} is required")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{name} must be <= {maximum}")
+    return value
+
+
+def _payload_bool(payload: dict[str, Any], name: str) -> bool | None:
+    if name not in payload:
+        return None
+    raw = payload.get(name)
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        normalized = raw.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    raise ValueError(f"{name} must be a boolean")
+
+
+def _payload_string(payload: dict[str, Any], name: str, *, allow_empty: bool = True) -> str | None:
+    if name not in payload:
+        return None
+    value = str(payload.get(name) or "").strip()
+    if not allow_empty and not value:
+        raise ValueError(f"{name} is required")
+    return value
+
+
+def _set_if_present(target: dict[str, Any], key: str, value: Any) -> None:
+    if value is not None:
+        target[key] = value
+
+
+def _config_updates_from_payload(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    cpa: dict[str, Any] = {}
+    webui: dict[str, Any] = {}
+    auth: dict[str, Any] = {}
+
+    _set_if_present(cpa, "endpoint", _payload_string(payload, "cpaEndpoint", allow_empty=False))
+    token = _payload_string(payload, "cpaToken", allow_empty=True)
+    if token:
+        cpa["token"] = token
+    _set_if_present(cpa, "proxy", _payload_string(payload, "proxy", allow_empty=True))
+    _set_if_present(cpa, "interval", _payload_int(payload, "intervalSeconds", minimum=1))
+    _set_if_present(cpa, "quota_threshold", _payload_int(payload, "quotaThreshold", minimum=0, maximum=100))
+    _set_if_present(cpa, "expiry_threshold_days", _payload_int(payload, "expiryThresholdDays", minimum=0))
+    _set_if_present(cpa, "enable_refresh", _payload_bool(payload, "enableRefresh"))
+    _set_if_present(cpa, "http_timeout", _payload_int(payload, "cpaTimeoutSeconds", minimum=1))
+    _set_if_present(cpa, "usage_timeout", _payload_int(payload, "usageTimeoutSeconds", minimum=1))
+    _set_if_present(cpa, "max_retries", _payload_int(payload, "maxRetries", minimum=0, maximum=5))
+    _set_if_present(cpa, "worker_threads", _payload_int(payload, "workerThreads", minimum=1))
+
+    _set_if_present(webui, "enabled", _payload_bool(payload, "webuiEnabled"))
+    _set_if_present(webui, "log_max_lines", _payload_int(payload, "logMaxLines", minimum=1))
+
+    _set_if_present(auth, "enabled", _payload_bool(payload, "authEnabled"))
+    password = _payload_string(payload, "loginPassword", allow_empty=True)
+    if password:
+        auth["login_password"] = password
+    _set_if_present(auth, "session_ttl", _payload_int(payload, "authSessionTtlSeconds", minimum=1))
+
+    return {"cpa": cpa, "webui": webui, "auth": auth}
+
+
 class HistoryLogger(ConsoleLogger):
     def __init__(self, max_lines: int = 500) -> None:
         super().__init__()
@@ -62,6 +139,12 @@ class HistoryLogger(ConsoleLogger):
     def clear(self) -> None:
         with self._history_lock:
             self._history.clear()
+
+    def set_max_lines(self, max_lines: int) -> None:
+        self.max_lines = max_lines
+        with self._history_lock:
+            if len(self._history) > self.max_lines:
+                del self._history[: len(self._history) - self.max_lines]
 
     def log(self, level: str, message: str, indent: int = 0) -> None:
         prefix = self.PREFIX_MAP.get(level, f"[{level}]")
@@ -114,6 +197,52 @@ class KeeperRuntime:
         self.next_run_at: float | None = None
         self.last_error: str | None = None
         self.last_proxy_test: dict[str, Any] | None = None
+
+    def apply_settings(self, settings: Settings) -> None:
+        with self._state_lock:
+            self.settings = settings
+            self.logger.set_max_lines(settings.log_max_lines)
+            self.keeper = CPACodexKeeper(settings=settings, dry_run=self.dry_run, logger=self.logger)
+            self.next_run_at = time.time() + settings.interval_seconds if self._scheduler_thread else self.next_run_at
+
+    def config_payload(self) -> dict[str, Any]:
+        return {
+            "configPath": str(PROJECT_CONFIG_FILE),
+            "values": {
+                "cpaEndpoint": self.settings.cpa_endpoint,
+                "cpaTokenConfigured": bool(self.settings.cpa_token),
+                "proxy": self.settings.proxy or "",
+                "intervalSeconds": self.settings.interval_seconds,
+                "quotaThreshold": self.settings.quota_threshold,
+                "expiryThresholdDays": self.settings.expiry_threshold_days,
+                "enableRefresh": self.settings.enable_refresh,
+                "usageTimeoutSeconds": self.settings.usage_timeout_seconds,
+                "cpaTimeoutSeconds": self.settings.cpa_timeout_seconds,
+                "maxRetries": self.settings.max_retries,
+                "workerThreads": self.settings.worker_threads,
+                "webuiEnabled": self.settings.webui_enabled,
+                "logMaxLines": self.settings.log_max_lines,
+                "authEnabled": self.settings.auth_enabled,
+                "loginPasswordConfigured": bool(self.settings.login_password),
+                "authSessionTtlSeconds": self.settings.auth_session_ttl_seconds,
+            },
+        }
+
+    def update_config(self, payload: dict[str, Any]) -> dict[str, Any]:
+        updates = _config_updates_from_payload(payload)
+        old_text = PROJECT_CONFIG_FILE.read_text(encoding="utf-8") if PROJECT_CONFIG_FILE.exists() else None
+        try:
+            update_config_file(updates)
+            settings = load_settings()
+        except Exception:
+            if old_text is None:
+                PROJECT_CONFIG_FILE.unlink(missing_ok=True)
+            else:
+                PROJECT_CONFIG_FILE.write_text(old_text, encoding="utf-8")
+            raise
+        self.apply_settings(settings)
+        self.logger.log("INFO", "WebUI 配置已保存并热更新生效")
+        return self.config_payload()
 
     def start_scheduler(self) -> None:
         if self._scheduler_thread and self._scheduler_thread.is_alive():
@@ -252,6 +381,9 @@ class KeeperRuntime:
                     "quotaThreshold": self.settings.quota_threshold,
                     "expiryThresholdDays": self.settings.expiry_threshold_days,
                     "enableRefresh": self.settings.enable_refresh,
+                    "usageTimeoutSeconds": self.settings.usage_timeout_seconds,
+                    "cpaTimeoutSeconds": self.settings.cpa_timeout_seconds,
+                    "maxRetries": self.settings.max_retries,
                     "workerThreads": self.settings.worker_threads,
                     "logMaxLines": self.settings.log_max_lines,
                     "proxyConfigured": bool(self.settings.proxy),
@@ -266,9 +398,12 @@ class KeeperRuntime:
 class WebUIService:
     def __init__(self, runtime: KeeperRuntime) -> None:
         self.runtime = runtime
-        self.settings = runtime.settings
         self._sessions: dict[str, float] = {}
         self._sessions_lock = threading.Lock()
+
+    @property
+    def settings(self) -> Settings:
+        return self.runtime.settings
 
     def session_payload(self, handler: BaseHTTPRequestHandler) -> dict[str, bool]:
         return {
@@ -334,9 +469,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         return self.server.service  # type: ignore[attr-defined]
 
     def log_message(self, format: str, *args: Any) -> None:
-        if self.path in {"/api/status", "/api/logs/clear"}:
-            return
-        self.service.runtime.logger.log("INFO", f"WebUI {self.address_string()} {format % args}")
+        return
 
     def do_GET(self) -> None:
         if self.path in {"/", "/index.html"}:
@@ -358,6 +491,11 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             if not self._require_auth():
                 return
             self._send_json(self.service.runtime.status())
+            return
+        if self.path == "/api/config":
+            if not self._require_auth():
+                return
+            self._send_json(self.service.runtime.config_payload())
             return
         self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
 
@@ -402,6 +540,19 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             if not self._require_auth():
                 return
             self._send_json(self.service.runtime.test_proxy_latency())
+            return
+        if self.path == "/api/config":
+            if not self._require_auth():
+                return
+            try:
+                config = self.service.runtime.update_config(self._read_json())
+            except (SettingsError, ValueError) as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            except OSError as exc:
+                self._send_json({"error": f"failed to write config.yml: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            self._send_json({"saved": True, "config": config, "timestamp": utc_now_iso()})
             return
         self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
 
