@@ -37,6 +37,7 @@ class SettingsTests(unittest.TestCase):
         self.assertFalse(settings.webui_enabled)
         self.assertEqual(settings.app_port, 8080)
         self.assertFalse(settings.auth_enabled)
+        self.assertEqual(settings.log_max_lines, 500)
 
     def test_load_settings_reads_from_project_env_file(self):
         env_file = self._make_env_file(
@@ -46,6 +47,7 @@ class SettingsTests(unittest.TestCase):
             "CPA_WORKER_THREADS=6\n"
             "WEBUI_ENABLED=true\n"
             "APP_PORT=9090\n"
+            "LOG_MAX_LINES=1200\n"
             "AUTH_ENABLED=true\n"
             "LOGIN_PASSWORD=web-secret\n"
             "AUTH_SESSION_TTL=12h\n"
@@ -58,6 +60,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.worker_threads, 6)
         self.assertTrue(settings.webui_enabled)
         self.assertEqual(settings.app_port, 9090)
+        self.assertEqual(settings.log_max_lines, 1200)
         self.assertTrue(settings.auth_enabled)
         self.assertEqual(settings.login_password, "web-secret")
         self.assertEqual(settings.auth_session_ttl_seconds, 12 * 60 * 60)
@@ -79,6 +82,7 @@ class SettingsTests(unittest.TestCase):
             "webui:\n"
             "  enabled: true\n"
             "  port: 9091\n"
+            "  log_max_lines: 42\n"
         )
         with patch.dict(
             os.environ,
@@ -91,6 +95,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.worker_threads, 3)
         self.assertTrue(settings.webui_enabled)
         self.assertEqual(settings.app_port, 9091)
+        self.assertEqual(settings.log_max_lines, 42)
 
     def test_load_settings_rejects_missing_endpoint(self):
         env_file = Path("does-not-exist.env")
@@ -125,5 +130,11 @@ class SettingsTests(unittest.TestCase):
     def test_load_settings_rejects_bad_auth_session_ttl(self):
         env_file = Path("does-not-exist.env")
         with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "AUTH_SESSION_TTL": "0s"}, clear=True):
+            with self.assertRaises(SettingsError):
+                load_settings(env_file=env_file)
+
+    def test_load_settings_rejects_zero_log_max_lines(self):
+        env_file = Path("does-not-exist.env")
+        with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "LOG_MAX_LINES": "0"}, clear=True):
             with self.assertRaises(SettingsError):
                 load_settings(env_file=env_file)

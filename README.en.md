@@ -146,6 +146,7 @@ Then edit `.env`, or edit `config.yml` directly.
 - `WEBUI_ENABLED`: whether to start the built-in WebUI, default `false`; `docker-compose.yml` sets it to `true`
 - `APP_HOST`: WebUI listen address, default `0.0.0.0`
 - `APP_PORT`: WebUI listen port, default `8080`
+- `LOG_MAX_LINES`: maximum recent log lines kept in WebUI memory, default `500`
 - `AUTH_ENABLED`: whether WebUI login protection is enabled, default `false`
 - `LOGIN_PASSWORD`: required when `AUTH_ENABLED=true`
 - `AUTH_SESSION_TTL`: login session lifetime, default `168h`, supports `s/m/h/d` suffixes
@@ -188,7 +189,7 @@ python main.py
 
 ### WebUI
 
-The built-in WebUI keeps the daemon inspection loop and adds a status dashboard, recent logs, and manual inspection trigger:
+The built-in WebUI keeps the daemon inspection loop and adds a status dashboard, recent logs, log clearing, manual inspection trigger, and proxy latency test:
 
 ```bash
 WEBUI_ENABLED=true python main.py
@@ -239,6 +240,7 @@ docker run -d \
   -e CPA_TOKEN=your-management-token \
   -e CPA_INTERVAL=1800 \
   -e WEBUI_ENABLED=true \
+  -e LOG_MAX_LINES=500 \
   -e AUTH_ENABLED=true \
   -e LOGIN_PASSWORD=replace-with-a-strong-password \
   cpacodexkeeper

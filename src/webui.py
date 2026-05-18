@@ -7,6 +7,9 @@ from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+
+from curl_cffi import requests
 
 from .logging_utils import ConsoleLogger
 from .maintainer import CPACodexKeeper
@@ -27,6 +30,16 @@ def iso_from_timestamp(timestamp: float | None) -> str | None:
     return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
 
 
+def proxy_label(proxy: str | None) -> str | None:
+    if not proxy:
+        return None
+    parsed = urlsplit(proxy)
+    if not parsed.scheme or not parsed.netloc:
+        return proxy
+    netloc = parsed.netloc.rsplit("@", 1)[-1]
+    return urlunsplit((parsed.scheme, netloc, "", "", ""))
+
+
 class HistoryLogger(ConsoleLogger):
     def __init__(self, max_lines: int = 500) -> None:
         super().__init__()
@@ -45,6 +58,10 @@ class HistoryLogger(ConsoleLogger):
     def snapshot(self) -> list[str]:
         with self._history_lock:
             return list(self._history)
+
+    def clear(self) -> None:
+        with self._history_lock:
+            self._history.clear()
 
     def log(self, level: str, message: str, indent: int = 0) -> None:
         prefix = self.PREFIX_MAP.get(level, f"[{level}]")
@@ -83,10 +100,11 @@ class KeeperRuntime:
     def __init__(self, settings: Settings, *, dry_run: bool = False) -> None:
         self.settings = settings
         self.dry_run = dry_run
-        self.logger = HistoryLogger()
+        self.logger = HistoryLogger(max_lines=settings.log_max_lines)
         self.keeper = CPACodexKeeper(settings=settings, dry_run=dry_run, logger=self.logger)
         self._run_lock = threading.Lock()
         self._state_lock = threading.Lock()
+        self._proxy_test_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._scheduler_thread: threading.Thread | None = None
         self.running = False
@@ -95,6 +113,7 @@ class KeeperRuntime:
         self.last_finished_at: float | None = None
         self.next_run_at: float | None = None
         self.last_error: str | None = None
+        self.last_proxy_test: dict[str, Any] | None = None
 
     def start_scheduler(self) -> None:
         if self._scheduler_thread and self._scheduler_thread.is_alive():
@@ -126,6 +145,71 @@ class KeeperRuntime:
         thread = threading.Thread(target=self._execute_round, name="cpacodexkeeper-manual-run", daemon=True)
         thread.start()
         return True
+
+    def clear_logs(self) -> None:
+        self.logger.clear()
+
+    def test_proxy_latency(self) -> dict[str, Any]:
+        proxy = self.settings.proxy
+        if not proxy:
+            result = {
+                "ok": False,
+                "configured": False,
+                "proxy": None,
+                "latencyMs": None,
+                "error": "CPA_PROXY is not configured",
+                "timestamp": utc_now_iso(),
+            }
+            with self._state_lock:
+                self.last_proxy_test = result
+            return result
+
+        if not self._proxy_test_lock.acquire(blocking=False):
+            result = {
+                "ok": False,
+                "configured": True,
+                "proxy": proxy_label(proxy),
+                "latencyMs": None,
+                "error": "proxy test already running",
+                "timestamp": utc_now_iso(),
+            }
+            with self._state_lock:
+                self.last_proxy_test = result
+            return result
+
+        started = time.perf_counter()
+        try:
+            response = requests.get(
+                "https://chatgpt.com/",
+                proxies={"http": proxy, "https": proxy},
+                impersonate="chrome",
+                timeout=min(self.settings.usage_timeout_seconds, 10),
+            )
+            latency_ms = round((time.perf_counter() - started) * 1000)
+            result = {
+                "ok": response.status_code < 500,
+                "configured": True,
+                "proxy": proxy_label(proxy),
+                "latencyMs": latency_ms,
+                "statusCode": response.status_code,
+                "error": None if response.status_code < 500 else f"HTTP {response.status_code}",
+                "timestamp": utc_now_iso(),
+            }
+        except Exception as exc:
+            result = {
+                "ok": False,
+                "configured": True,
+                "proxy": proxy_label(proxy),
+                "latencyMs": None,
+                "error": str(exc),
+                "timestamp": utc_now_iso(),
+            }
+        finally:
+            self._proxy_test_lock.release()
+
+        with self._state_lock:
+            self.last_proxy_test = result
+        return result
 
     def _execute_round(self) -> bool:
         if not self._run_lock.acquire(blocking=False):
@@ -169,9 +253,13 @@ class KeeperRuntime:
                     "expiryThresholdDays": self.settings.expiry_threshold_days,
                     "enableRefresh": self.settings.enable_refresh,
                     "workerThreads": self.settings.worker_threads,
+                    "logMaxLines": self.settings.log_max_lines,
+                    "proxyConfigured": bool(self.settings.proxy),
+                    "proxy": proxy_label(self.settings.proxy),
                     "authEnabled": self.settings.auth_enabled,
                     "appPort": self.settings.app_port,
                 },
+                "proxyTest": self.last_proxy_test,
                 "timestamp": utc_now_iso(),
             }
 
@@ -246,6 +334,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         return self.server.service  # type: ignore[attr-defined]
 
     def log_message(self, format: str, *args: Any) -> None:
+        if self.path in {"/api/status", "/api/logs/clear"}:
+            return
         self.service.runtime.logger.log("INFO", f"WebUI {self.address_string()} {format % args}")
 
     def do_GET(self) -> None:
@@ -301,6 +391,17 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 return
             self.service.runtime.run_once_async()
             self._send_json({"accepted": True, "timestamp": utc_now_iso()}, status=HTTPStatus.ACCEPTED)
+            return
+        if self.path == "/api/logs/clear":
+            if not self._require_auth():
+                return
+            self.service.runtime.clear_logs()
+            self._send_json({"cleared": True, "timestamp": utc_now_iso()})
+            return
+        if self.path == "/api/proxy/test":
+            if not self._require_auth():
+                return
+            self._send_json(self.service.runtime.test_proxy_latency())
             return
         self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
 

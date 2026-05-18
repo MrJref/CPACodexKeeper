@@ -15,5 +15,6 @@ class DockerComposeTests(unittest.TestCase):
         self.assertIn("WEBUI_ENABLED: ${WEBUI_ENABLED:-true}", compose_text)
         self.assertIn("AUTH_ENABLED: ${AUTH_ENABLED:-false}", compose_text)
         self.assertIn("LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}", compose_text)
+        self.assertIn("LOG_MAX_LINES: ${LOG_MAX_LINES:-500}", compose_text)
         self.assertIn('"${APP_PORT:-8080}:${APP_PORT:-8080}"', compose_text)
         self.assertIn("./config.yml:/app/config.yml:ro", compose_text)

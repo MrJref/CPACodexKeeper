@@ -61,7 +61,10 @@ INDEX_HTML = """<!doctype html>
             <div><dt>配额阈值</dt><dd id="quotaValue">-</dd></div>
             <div><dt>刷新阈值</dt><dd id="expiryValue">-</dd></div>
             <div><dt>并发线程</dt><dd id="workersValue">-</dd></div>
+            <div><dt>日志行数</dt><dd id="logMaxLinesValue">-</dd></div>
+            <div><dt>代理状态</dt><dd id="proxyValue">-</dd></div>
           </dl>
+          <button id="proxyTestButton" class="pill-btn wide-btn" type="button">检测代理延迟</button>
         </article>
       </section>
 
@@ -83,7 +86,10 @@ INDEX_HTML = """<!doctype html>
               <div class="card-kicker">Logs</div>
               <h2>最近日志</h2>
             </div>
-            <span id="lastRunValue" class="muted">尚未运行</span>
+            <div class="section-actions">
+              <span id="lastRunValue" class="muted">尚未运行</span>
+              <button id="clearLogsButton" class="pill-btn" type="button">清空日志</button>
+            </div>
           </div>
           <pre id="logOutput" class="log-output">等待日志...</pre>
         </article>
@@ -261,6 +267,7 @@ button, input { font: inherit; }
 .config-list div:last-child { border-bottom: 0; }
 .config-list dt { color: var(--text-secondary); }
 .config-list dd { margin: 0; font-weight: 900; }
+.wide-btn { width: 100%; margin-top: 14px; }
 .stats-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; }
 .stat-card {
   min-height: 108px;
@@ -275,6 +282,7 @@ button, input { font: inherit; }
 .content-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .content-grid .card { padding: 20px; }
 .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.section-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .muted { color: var(--text-tertiary); font-size: 13px; }
 .empty-state {
   padding: 24px;
@@ -338,6 +346,7 @@ button, input { font: inherit; }
   .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .top-actions { justify-content: stretch; }
   .top-actions > * { flex: 1; }
+  .section-head, .section-actions { flex-direction: column; align-items: stretch; }
 }
 """
 
@@ -405,6 +414,7 @@ function setBadge(el, text, kind) {
 
 function renderStatus(data) {
   const stats = data.stats || {};
+  const proxyTest = data.proxyTest || {};
   $('serviceState').textContent = data.running ? '巡检运行中' : '服务待命';
   $('serviceDetail').textContent = data.running
     ? `本轮开始于 ${formatDate(data.lastStartedAt)}`
@@ -416,6 +426,14 @@ function renderStatus(data) {
   $('quotaValue').textContent = `${data.settings?.quotaThreshold || 0}%`;
   $('expiryValue').textContent = `${data.settings?.expiryThresholdDays || 0}d`;
   $('workersValue').textContent = data.settings?.workerThreads || '-';
+  $('logMaxLinesValue').textContent = data.settings?.logMaxLines || '-';
+  if (proxyTest.latencyMs !== undefined && proxyTest.latencyMs !== null) {
+    $('proxyValue').textContent = `${proxyTest.latencyMs}ms`;
+  } else if (proxyTest.error) {
+    $('proxyValue').textContent = '检测失败';
+  } else {
+    $('proxyValue').textContent = data.settings?.proxyConfigured ? '已配置' : '未配置';
+  }
   $('statTotal').textContent = stats.total || 0;
   $('statAlive').textContent = stats.alive || 0;
   $('statDead').textContent = stats.dead || 0;
@@ -427,6 +445,7 @@ function renderStatus(data) {
   $('lastRunValue').textContent = data.lastFinishedAt ? `上次完成：${formatDate(data.lastFinishedAt)}` : '尚未完成';
   $('logOutput').textContent = (data.logs || []).join('\\n') || '等待日志...';
   $('runButton').disabled = Boolean(data.running);
+  $('proxyTestButton').disabled = !data.settings?.proxyConfigured;
 }
 
 async function refreshStatus() {
@@ -443,6 +462,36 @@ async function runNow() {
     if (error.message !== 'AUTH_REQUIRED') alert(error.message);
   } finally {
     $('runButton').disabled = false;
+  }
+}
+
+async function clearLogs() {
+  $('clearLogsButton').disabled = true;
+  try {
+    await api('/api/logs/clear', { method: 'POST', body: '{}' });
+    $('logOutput').textContent = '等待日志...';
+    await refreshStatus();
+  } catch (error) {
+    if (error.message !== 'AUTH_REQUIRED') alert(error.message);
+  } finally {
+    $('clearLogsButton').disabled = false;
+  }
+}
+
+async function testProxy() {
+  $('proxyTestButton').disabled = true;
+  $('proxyValue').textContent = '检测中...';
+  try {
+    const data = await api('/api/proxy/test', { method: 'POST', body: '{}' });
+    if (data.ok && data.latencyMs !== undefined && data.latencyMs !== null) {
+      $('proxyValue').textContent = `${data.latencyMs}ms`;
+    } else {
+      $('proxyValue').textContent = data.error || '检测失败';
+    }
+  } catch (error) {
+    if (error.message !== 'AUTH_REQUIRED') $('proxyValue').textContent = error.message;
+  } finally {
+    $('proxyTestButton').disabled = false;
   }
 }
 
@@ -474,6 +523,8 @@ async function boot() {
   $('themeToggle').addEventListener('click', () => setTheme(state.theme === 'dark' ? 'light' : 'dark'));
   $('refreshButton').addEventListener('click', () => void refreshStatus());
   $('runButton').addEventListener('click', () => void runNow());
+  $('clearLogsButton').addEventListener('click', () => void clearLogs());
+  $('proxyTestButton').addEventListener('click', () => void testProxy());
   $('logoutButton').addEventListener('click', () => void logout());
   const session = await api('/api/auth/session').catch(() => ({ authenticated: false, authEnabled: true }));
   state.authEnabled = Boolean(session.authEnabled);

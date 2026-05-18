@@ -16,6 +16,7 @@ DEFAULT_APP_HOST = "0.0.0.0"
 DEFAULT_APP_PORT = 8080
 DEFAULT_AUTH_ENABLED = False
 DEFAULT_AUTH_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+DEFAULT_LOG_MAX_LINES = 500
 PROJECT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 PROJECT_CONFIG_FILE = Path(__file__).resolve().parents[1] / "config.yml"
 
@@ -34,6 +35,7 @@ CONFIG_KEY_ALIASES = {
     "webui.enabled": "WEBUI_ENABLED",
     "webui.host": "APP_HOST",
     "webui.port": "APP_PORT",
+    "webui.log_max_lines": "LOG_MAX_LINES",
     "auth.enabled": "AUTH_ENABLED",
     "auth.login_password": "LOGIN_PASSWORD",
     "auth.session_ttl": "AUTH_SESSION_TTL",
@@ -63,6 +65,7 @@ class Settings:
     auth_enabled: bool = DEFAULT_AUTH_ENABLED
     login_password: str = ""
     auth_session_ttl_seconds: int = DEFAULT_AUTH_SESSION_TTL_SECONDS
+    log_max_lines: int = DEFAULT_LOG_MAX_LINES
 
 
 def _read_project_env_file(env_file: Path | None = None) -> dict[str, str]:
@@ -286,4 +289,5 @@ def load_settings(env_file: Path | None = None, config_file: Path | None = None)
             env_values,
             config_values,
         ),
+        log_max_lines=_read_int("LOG_MAX_LINES", DEFAULT_LOG_MAX_LINES, env_values, config_values, minimum=1),
     )

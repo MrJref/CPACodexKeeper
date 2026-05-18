@@ -147,6 +147,7 @@ cp .env.example .env
 - `WEBUI_ENABLED`：是否启动内置 WebUI，默认 `false`；`docker-compose.yml` 默认设为 `true`
 - `APP_HOST`：WebUI 监听地址，默认 `0.0.0.0`
 - `APP_PORT`：WebUI 监听端口，默认 `8080`
+- `LOG_MAX_LINES`：WebUI 最近日志内存保留最大行数，默认 `500`
 - `AUTH_ENABLED`：是否启用 WebUI 登录保护，默认 `false`
 - `LOGIN_PASSWORD`：启用 `AUTH_ENABLED=true` 时必填的登录密码
 - `AUTH_SESSION_TTL`：登录 session 有效期，默认 `168h`，支持 `s/m/h/d` 后缀
@@ -189,7 +190,7 @@ python main.py
 
 ### WebUI
 
-内置 WebUI 会沿用守护模式巡检，并提供状态面板、最近日志和手动触发巡检：
+内置 WebUI 会沿用守护模式巡检，并提供状态面板、最近日志、清空日志、手动触发巡检和代理延迟检测：
 
 ```bash
 WEBUI_ENABLED=true python main.py
@@ -240,6 +241,7 @@ docker run -d \
   -e CPA_TOKEN=your-management-token \
   -e CPA_INTERVAL=1800 \
   -e WEBUI_ENABLED=true \
+  -e LOG_MAX_LINES=500 \
   -e AUTH_ENABLED=true \
   -e LOGIN_PASSWORD=replace-with-a-strong-password \
   cpacodexkeeper
