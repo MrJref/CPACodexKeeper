@@ -70,7 +70,45 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(usage.quota_check_percent, 30)
         self.assertEqual(usage.quota_check_label, "Week")
 
-    def test_process_token_deletes_invalid_token_on_401(self):
+    def test_process_token_revives_invalid_token_on_401(self):
+        self.maintainer.get_token_detail = Mock(return_value={
+            "email": "a@example.com",
+            "disabled": False,
+            "access_token": "token",
+            "refresh_token": "rt",
+            "account_id": "acc",
+            "expired": "2099-01-01T00:00:00Z",
+        })
+        self.maintainer.check_token_live = Mock(side_effect=[
+            (401, {"brief": "unauthorized"}),
+            (200, {
+                "json": {
+                    "plan_type": "free",
+                    "rate_limit": {
+                        "primary_window": {"used_percent": 0, "limit_window_seconds": 604800},
+                        "secondary_window": None,
+                    },
+                    "credits": {"has_credits": False},
+                }
+            }),
+        ])
+        self.maintainer.try_refresh = Mock(return_value=(True, {
+            "access_token": "new-token",
+            "refresh_token": "new-rt",
+            "account_id": "acc",
+            "expired": "2099-03-01T00:00:00Z",
+        }, "刷新成功"))
+        self.maintainer.upload_updated_token = Mock(return_value=True)
+        result = self.maintainer.process_token({"name": "t1"}, 1, 1)
+        self.assertEqual(result, "alive")
+        self.maintainer.try_refresh.assert_called_once()
+        self.maintainer.upload_updated_token.assert_called_once()
+        self.assertEqual(self.maintainer.check_token_live.call_args_list[1].args, ("new-token", "acc"))
+        self.assertEqual(self.maintainer.stats.refreshed, 1)
+        self.assertEqual(self.maintainer.stats.alive, 1)
+        self.assertEqual(self.maintainer.stats.dead, 0)
+
+    def test_process_token_deletes_invalid_token_when_revive_fails(self):
         self.maintainer.get_token_detail = Mock(return_value={
             "email": "a@example.com",
             "disabled": False,
@@ -80,8 +118,10 @@ class MaintainerTests(unittest.TestCase):
             "expired": "2099-01-01T00:00:00Z",
         })
         self.maintainer.check_token_live = Mock(return_value=(401, {"brief": "unauthorized"}))
+        self.maintainer.try_refresh = Mock(return_value=(False, None, "刷新被拒(400)"))
         result = self.maintainer.process_token({"name": "t1"}, 1, 1)
         self.assertEqual(result, "dead")
+        self.maintainer.try_refresh.assert_called_once()
         self.assertEqual(self.maintainer.stats.dead, 1)
 
     def test_process_token_disables_invalid_token_when_auto_delete_disabled(self):
@@ -101,12 +141,14 @@ class MaintainerTests(unittest.TestCase):
             "expired": "2099-01-01T00:00:00Z",
         })
         maintainer.check_token_live = Mock(return_value=(401, {"brief": "unauthorized"}))
+        maintainer.try_refresh = Mock(return_value=(False, None, "刷新被拒(400)"))
         maintainer.delete_token = Mock(return_value=True)
         maintainer.set_disabled_status = Mock(return_value=True)
 
         result = maintainer.process_token({"name": "t1"}, 1, 1)
 
         self.assertEqual(result, "disabled")
+        maintainer.try_refresh.assert_called_once()
         self.assertEqual(maintainer.stats.disabled, 1)
         maintainer.delete_token.assert_not_called()
         maintainer.set_disabled_status.assert_called_once()
@@ -301,9 +343,12 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(result, "alive")
         self.assertTrue(captured_lines)
         emitted = "\n".join(captured_lines[0])
-        self.assertIn("Week: 100%", emitted)
+        self.assertIn("Week剩余额度: 0%", emitted)
+        self.assertIn("账户余额: 无", emitted)
         self.assertIn("Week剩余额度 0% < 30%，准备禁用", emitted)
-        self.assertNotIn("5h: 100%", emitted)
+        self.assertNotIn("Week: 100%", emitted)
+        self.assertNotIn("Credits:", emitted)
+        self.assertNotIn("5h剩余额度", emitted)
 
     def test_process_token_does_not_refresh_when_refresh_disabled(self):
         settings = Settings(

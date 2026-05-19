@@ -175,6 +175,46 @@ class CPACodexKeeper:
     def _handle_invalid_token(self, name, logger):
         return self._delete_token_with_reason(name, "Token 无效或 workspace 已停用，准备删除", logger)
 
+    def _try_revive_invalid_token(self, name, token_detail, logger):
+        if not self._has_refresh_token(token_detail):
+            logger.log("WARN", "Token 检测为失效且缺少 Refresh Token，无法尝试复活", indent=1)
+            return None
+
+        logger.log("WARN", "Token 检测为失效，准备通过 Refresh Token 尝试复活", indent=1)
+        success, new_data, msg = self.try_refresh(token_detail)
+        if not success:
+            logger.log("ERROR", f"Token 复活刷新失败: {msg}", indent=1)
+            return None
+
+        if not self.upload_updated_token(name, new_data, logger=logger):
+            logger.log("ERROR", "Token 复活刷新成功但上传失败", indent=1)
+            return None
+
+        new_access_token = new_data.get("access_token")
+        if not new_access_token:
+            logger.log("ERROR", "Token 复活刷新结果缺少 access_token", indent=1)
+            return None
+
+        logger.log("INFO", "Token 已刷新上传，开始二次检测在线状态...", indent=1)
+        status, resp_data = self.check_token_live(new_access_token, new_data.get("account_id"))
+        if status == 200:
+            _, new_remaining = get_expired_remaining(new_data)
+            logger.log("REFRESH", f"Token 复活成功: {msg}，新剩余: {format_seconds(new_remaining)}", indent=1)
+            self._inc_stat("refreshed")
+        elif status is None:
+            detail = resp_data.get("brief", "") if isinstance(resp_data, dict) else str(resp_data)
+            msg = "Token 已刷新上传，但二次检测网络失败"
+            if detail:
+                msg += f" | {detail}"
+            logger.log("WARN", msg, indent=1)
+        else:
+            detail = resp_data.get("brief", "") if isinstance(resp_data, dict) else str(resp_data)
+            msg = f"Token 刷新后二次检测仍失败 ({status})"
+            if detail:
+                msg += f" | {detail}"
+            logger.log("ERROR", msg, indent=1)
+        return new_data, status, resp_data
+
     def _apply_non_refreshable_expiry_policy(self, name, token_detail, remaining_seconds, expiry_known, logger):
         if self._has_refresh_token(token_detail) or not expiry_known or remaining_seconds > 0:
             return None
@@ -197,10 +237,13 @@ class CPACodexKeeper:
         primary_label = format_window_label(primary_seconds, "primary_window")
         secondary_label = format_window_label(secondary_seconds, "secondary_window") if secondary_pct is not None else None
 
-        quota_info = f"{primary_label}: {primary_pct}%"
+        primary_remaining = self._remaining_percent(primary_pct)
+        secondary_remaining = None if secondary_pct is None else self._remaining_percent(secondary_pct)
+
+        quota_info = f"{primary_label}剩余额度: {primary_remaining}%"
         if secondary_pct is not None:
-            quota_info += f" | {secondary_label}: {secondary_pct}%"
-        quota_info += f" | Credits: {credits}"
+            quota_info += f" | {secondary_label}剩余额度: {secondary_remaining}%"
+        quota_info += f" | 账户余额: {'有' if credits else '无'}"
         logger.log("OK", f"存活 | Plan: {plan} | {quota_info}", indent=1)
         return primary_pct, secondary_pct, primary_label, secondary_label
 
@@ -355,7 +398,12 @@ class CPACodexKeeper:
             logger.log("INFO", "检测在线状态...", indent=1)
             status, resp_data = self.check_token_live(access_token, account_id)
             if status in (401, 402):
-                return self._handle_invalid_token(name, logger)
+                revive_result = self._try_revive_invalid_token(name, token_detail, logger)
+                if not revive_result:
+                    return self._handle_invalid_token(name, logger)
+                token_detail, status, resp_data = revive_result
+                if status in (401, 402):
+                    return self._handle_invalid_token(name, logger)
             if status is None:
                 detail = resp_data.get("brief", "") if isinstance(resp_data, dict) else str(resp_data)
                 msg = "网络检测失败"

@@ -11,6 +11,19 @@ class OpenAIClient:
     REFRESH_URL = "https://auth.openai.com/oauth/token"
     CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
     REDIRECT_URI = "http://localhost:1455/auth/callback"
+    IMPERSONATE = "chrome"
+    USER_AGENT = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/136.0.0.0 Safari/537.36"
+    )
+    COMMON_BROWSER_HEADERS = {
+        "User-Agent": USER_AGENT,
+        "Accept-Language": "en-US,en;q=0.9",
+        "sec-ch-ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+    }
 
     def __init__(self, *, proxy: str | None = None, timeout: int = 15, max_retries: int = 2):
         self.timeout = timeout
@@ -25,7 +38,7 @@ class OpenAIClient:
                     method,
                     url,
                     proxies=self.proxies,
-                    impersonate="chrome",
+                    impersonate=self.IMPERSONATE,
                     timeout=self.timeout,
                     **kwargs,
                 )
@@ -52,9 +65,15 @@ class OpenAIClient:
 
     def check_usage(self, access_token: str, account_id: str | None = None) -> RequestResult:
         headers = {
+            **self.COMMON_BROWSER_HEADERS,
             "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-            "User-Agent": "codex_cli_rs/0.76.0",
+            "Accept": "application/json",
+            "Origin": "https://chatgpt.com",
+            "Referer": "https://chatgpt.com/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "Priority": "u=1, i",
         }
         if account_id:
             headers["Chatgpt-Account-Id"] = account_id
@@ -67,7 +86,18 @@ class OpenAIClient:
             "client_id": self.CLIENT_ID,
             "refresh_token": refresh_token,
         }
-        return self._request("POST", self.REFRESH_URL, json=payload)
+        headers = {
+            **self.COMMON_BROWSER_HEADERS,
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": "http://localhost:1455",
+            "Referer": "http://localhost:1455/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "cross-site",
+            "Priority": "u=1, i",
+        }
+        return self._request("POST", self.REFRESH_URL, headers=headers, data=payload)
 
 
 def parse_usage_info(result: RequestResult | dict | None) -> UsageInfo:

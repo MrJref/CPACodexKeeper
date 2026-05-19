@@ -11,6 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from src.settings import Settings
 from src.webui import APP_VERSION, HistoryLogger, KeeperRuntime, WebUIService, proxy_label
+from src.webui_assets import APP_JS, INDEX_HTML
 
 
 class FakeHandler:
@@ -257,6 +258,14 @@ class WebUITests(unittest.TestCase):
 
     def test_proxy_label_sanitizes_without_port_validation(self):
         self.assertEqual(proxy_label("http://user:pass@127.0.0.1:notaport"), "http://127.0.0.1:notaport")
+
+    def test_webui_assets_include_log_search_shortcut(self):
+        self.assertIn('id="logSearchBar"', INDEX_HTML)
+        self.assertIn('id="logSearchInput"', INDEX_HTML)
+        self.assertIn('tabindex="0"', INDEX_HTML)
+        self.assertIn("handleLogSearchShortcut", APP_JS)
+        self.assertIn("event.ctrlKey", APP_JS)
+        self.assertIn("event.metaKey", APP_JS)
 
 
 if __name__ == "__main__":

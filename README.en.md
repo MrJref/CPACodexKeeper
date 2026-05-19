@@ -62,13 +62,15 @@ Each inspection round follows this sequence:
 3. fetch token details one by one
 4. read expiry information and remaining lifetime
 5. call the OpenAI usage endpoint
-6. delete the token if usage returns `401` or `402`, meaning the token is invalid or the workspace is deactivated
-7. if usage returns two quota windows, evaluate them by their actual meaning
-8. disable when either window's remaining quota is below the threshold, and re-enable only when both are at or above it
-9. if the token has **no `refresh_token`** and is already expired, delete it directly
-10. if the token has **no `refresh_token`** and remaining quota is below the threshold, delete it directly
-11. if automatic refresh is explicitly enabled and the token is still disabled after quota handling and close to expiry, refresh it
-12. upload the refreshed token payload back to CPA
+6. if usage returns `401` or `402`, first try to revive it by refreshing with `refresh_token`
+7. after a successful revive refresh, upload the latest token payload and run usage again; only continue quota handling if the second check passes
+8. if there is no `refresh_token`, refresh fails, upload fails, or the second check still returns `401` / `402`, apply the dead-token policy
+9. if usage returns two quota windows, evaluate them by their actual meaning
+10. disable when either window's remaining quota is below the threshold, and re-enable only when both are at or above it
+11. if the token has **no `refresh_token`** and is already expired, delete it directly
+12. if the token has **no `refresh_token`** and remaining quota is below the threshold, delete it directly
+13. if automatic refresh is explicitly enabled and the token is still disabled after quota handling and close to expiry, refresh it
+14. upload the refreshed token payload back to CPA
 
 This process is **round-based with intra-round concurrency**. One full round still completes before the next round starts, but multiple tokens can be inspected concurrently within the same round.
 
@@ -402,11 +404,11 @@ Check:
 
 ### usage returns `401`
 
-The token is invalid. Under the current logic, it will be deleted.
+The current access token is invalid. The current logic first tries to revive it with `refresh_token`; if refresh and the second usage check succeed, the token is kept. If revive fails, the dead-token policy applies.
 
 ### usage returns `402`
 
-This usually means the workspace is deactivated or unavailable. Under the current logic, it will also be deleted.
+This usually means the workspace is deactivated or unavailable. The current logic also tries a revive refresh first; if refresh fails or the second check still fails, the dead-token policy applies.
 
 ### `secondary_window = null`
 

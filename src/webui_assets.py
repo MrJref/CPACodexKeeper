@@ -175,7 +175,14 @@ INDEX_HTML = """<!doctype html>
               <button id="clearLogsButton" class="pill-btn" type="button">清空日志</button>
             </div>
           </div>
-          <pre id="logOutput" class="log-output">等待日志...</pre>
+          <div id="logSearchBar" class="log-search hidden">
+            <input id="logSearchInput" type="search" placeholder="搜索日志内容">
+            <span id="logSearchCount" class="muted">0/0</span>
+            <button id="logSearchPrev" class="pill-btn" type="button">上一个</button>
+            <button id="logSearchNext" class="pill-btn" type="button">下一个</button>
+            <button id="logSearchClose" class="pill-btn" type="button">关闭</button>
+          </div>
+          <pre id="logOutput" class="log-output" tabindex="0">等待日志...</pre>
         </article>
       </section>
     </main>
@@ -407,6 +414,35 @@ button, input { font: inherit; }
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
 }
+.log-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+}
+.log-search input {
+  flex: 1;
+  min-width: 160px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 9px 12px;
+  color: var(--text-primary);
+  background: var(--floating-surface);
+  outline: none;
+}
+.log-search input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 16%, transparent);
+}
+.log-search .pill-btn {
+  min-height: 34px;
+  padding-inline: 12px;
+}
 .log-output {
   min-height: 460px;
   max-height: 640px;
@@ -419,6 +455,20 @@ button, input { font: inherit; }
   line-height: 1.55;
   font-size: 12px;
   white-space: pre-wrap;
+  outline: none;
+}
+.log-output:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 22%, transparent);
+}
+.log-output mark {
+  border-radius: 4px;
+  padding: 0 2px;
+  color: #12110f;
+  background: #facc15;
+}
+.log-output mark.current {
+  color: #ffffff;
+  background: #f97316;
 }
 .login-page {
   min-height: 100vh;
@@ -528,6 +578,11 @@ const state = {
   configDirty: false,
   serviceRunning: false,
   logSettingsTimer: null,
+  logsText: '',
+  logSearchOpen: false,
+  logSearchQuery: '',
+  logSearchIndex: 0,
+  logMatches: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -607,6 +662,116 @@ function syncProxyTestButton(proxyConfigured = false) {
   $('proxyTestButton').disabled = !proxyConfigured && !$('configProxy').value.trim();
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+}
+
+function computeLogMatches(text, query) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  const haystack = text.toLowerCase();
+  const matches = [];
+  let offset = 0;
+  while (offset < haystack.length) {
+    const index = haystack.indexOf(needle, offset);
+    if (index === -1) break;
+    matches.push({ start: index, end: index + needle.length });
+    offset = index + Math.max(needle.length, 1);
+  }
+  return matches;
+}
+
+function updateLogSearchCount() {
+  const count = state.logMatches.length;
+  $('logSearchCount').textContent = count ? `${state.logSearchIndex + 1}/${count}` : '0/0';
+}
+
+function renderLogOutput() {
+  const output = $('logOutput');
+  const text = state.logsText || '等待日志...';
+  const query = state.logSearchQuery.trim();
+  if (!state.logSearchOpen || !query) {
+    state.logMatches = [];
+    output.textContent = text;
+    updateLogSearchCount();
+    return;
+  }
+
+  const matches = computeLogMatches(text, query);
+  state.logMatches = matches;
+  if (matches.length === 0) {
+    state.logSearchIndex = 0;
+    output.textContent = text;
+    updateLogSearchCount();
+    return;
+  }
+  if (state.logSearchIndex >= matches.length) state.logSearchIndex = 0;
+  if (state.logSearchIndex < 0) state.logSearchIndex = matches.length - 1;
+
+  let cursor = 0;
+  let html = '';
+  matches.forEach((match, index) => {
+    html += escapeHtml(text.slice(cursor, match.start));
+    const cls = index === state.logSearchIndex ? ' class="current"' : '';
+    html += `<mark${cls}>${escapeHtml(text.slice(match.start, match.end))}</mark>`;
+    cursor = match.end;
+  });
+  html += escapeHtml(text.slice(cursor));
+  output.innerHTML = html;
+  updateLogSearchCount();
+  const current = output.querySelector('mark.current');
+  if (current) current.scrollIntoView({ block: 'center', inline: 'nearest' });
+}
+
+function openLogSearch() {
+  state.logSearchOpen = true;
+  $('logSearchBar').classList.remove('hidden');
+  $('logSearchInput').value = state.logSearchQuery;
+  renderLogOutput();
+  $('logSearchInput').focus();
+  $('logSearchInput').select();
+}
+
+function closeLogSearch() {
+  state.logSearchOpen = false;
+  state.logSearchQuery = '';
+  state.logSearchIndex = 0;
+  $('logSearchInput').value = '';
+  $('logSearchBar').classList.add('hidden');
+  renderLogOutput();
+  $('logOutput').focus();
+}
+
+function updateLogSearchQuery() {
+  state.logSearchQuery = $('logSearchInput').value;
+  state.logSearchIndex = 0;
+  renderLogOutput();
+}
+
+function moveLogSearch(delta) {
+  if (!state.logMatches.length) return;
+  state.logSearchIndex = (state.logSearchIndex + delta + state.logMatches.length) % state.logMatches.length;
+  renderLogOutput();
+}
+
+function handleLogSearchShortcut(event) {
+  const key = (event.key || '').toLowerCase();
+  if (key !== 'f' || (!event.ctrlKey && !event.metaKey)) return;
+  const logOutput = $('logOutput');
+  const logSearchBar = $('logSearchBar');
+  const active = document.activeElement;
+  const inLogSearch = logSearchBar.contains(active);
+  if (active !== logOutput && !inLogSearch) return;
+  event.preventDefault();
+  openLogSearch();
+}
+
 function renderStatus(data) {
   const stats = data.stats || {};
   const proxyTest = data.proxyTest || {};
@@ -643,7 +808,8 @@ function renderStatus(data) {
   $('statSkipped').textContent = stats.skipped || 0;
   $('statNetwork').textContent = stats.network_error || 0;
   $('lastRunValue').textContent = data.lastFinishedAt ? `上次完成：${formatDate(data.lastFinishedAt)}` : '尚未完成';
-  $('logOutput').textContent = (data.logs || []).join('\\n') || '等待日志...';
+  state.logsText = (data.logs || []).join('\\n');
+  renderLogOutput();
   $('runButton').disabled = Boolean(data.running);
   syncProxyTestButton(Boolean(data.settings?.proxyConfigured));
 }
@@ -779,7 +945,8 @@ async function clearLogs() {
   $('clearLogsButton').disabled = true;
   try {
     await api('/api/logs/clear', { method: 'POST', body: '{}' });
-    $('logOutput').textContent = '等待日志...';
+    state.logsText = '';
+    renderLogOutput();
     await refreshStatus();
   } catch (error) {
     if (error.message !== 'AUTH_REQUIRED') alert(error.message);
@@ -841,6 +1008,21 @@ async function boot() {
   $('clearLogsButton').addEventListener('click', () => void clearLogs());
   $('proxyTestButton').addEventListener('click', () => void testProxy());
   $('logoutButton').addEventListener('click', () => void logout());
+  $('logOutput').addEventListener('click', () => $('logOutput').focus());
+  $('logSearchInput').addEventListener('input', updateLogSearchQuery);
+  $('logSearchInput').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      moveLogSearch(event.shiftKey ? -1 : 1);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeLogSearch();
+    }
+  });
+  $('logSearchPrev').addEventListener('click', () => moveLogSearch(-1));
+  $('logSearchNext').addEventListener('click', () => moveLogSearch(1));
+  $('logSearchClose').addEventListener('click', closeLogSearch);
+  document.addEventListener('keydown', handleLogSearchShortcut);
   $('configForm').addEventListener('input', () => {
     state.configDirty = true;
     $('configSaveState').textContent = '有未保存修改';
