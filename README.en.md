@@ -147,7 +147,7 @@ Then edit `.env`, or edit `config.yml` directly.
 - `CPA_WORKER_THREADS`: number of worker threads per inspection round, default `8`
 - `WEBUI_ENABLED`: whether to start the built-in WebUI, default `false`; `docker-compose.yml` sets it to `true`
 - `APP_HOST`: WebUI listen address, default `0.0.0.0`
-- `APP_PORT`: WebUI listen port, default `8080`
+- `APP_PORT`: WebUI listen port, default `8765`
 - `LOG_MAX_LINES`: maximum recent log lines kept in WebUI memory, default `500`
 - `AUTH_ENABLED`: whether WebUI login protection is enabled, default `false`
 - `LOGIN_PASSWORD`: required when `AUTH_ENABLED=true`
@@ -237,7 +237,7 @@ docker build -t cpacodexkeeper .
 ```bash
 docker run -d \
   --name cpacodexkeeper \
-  -p 8080:8080 \
+  -p 8765:8765 \
   -e CPA_ENDPOINT=https://your-cpa-endpoint \
   -e CPA_TOKEN=your-management-token \
   -e 'CPA_CRON=0 0/10 * * * ?' \
@@ -262,10 +262,10 @@ Then edit `.env` or `config.yml` and start:
 docker compose up -d --build
 ```
 
-Compose maps `${APP_PORT:-8080}` by default and enables `WEBUI_ENABLED=true`. If `webui.port` or `APP_PORT` is set in `config.yml`, the application uses that internal port; the published port is still determined by `${APP_PORT:-8080}` when Compose starts. Then open:
+Compose maps `${APP_PORT:-8765}` by default and enables `WEBUI_ENABLED=true`. If `webui.port` or `APP_PORT` is set in `config.yml`, the application uses that internal port; the published port is still determined by `${APP_PORT:-8765}` when Compose starts. Then open:
 
 ```text
-http://localhost:8080
+http://localhost:8765
 ```
 
 ---

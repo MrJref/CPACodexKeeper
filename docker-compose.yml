@@ -4,7 +4,7 @@ services:
     container_name: cpacodexkeeper
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
+      - "${APP_PORT:-8765}:${APP_PORT:-8765}"
     volumes:
       - ./config.yml:/app/config.yml
     environment:
@@ -23,7 +23,7 @@ services:
       CPA_WORKER_THREADS: ${CPA_WORKER_THREADS:-8}
       WEBUI_ENABLED: ${WEBUI_ENABLED:-true}
       APP_HOST: ${APP_HOST:-0.0.0.0}
-      APP_PORT: ${APP_PORT:-8080}
+      APP_PORT: ${APP_PORT:-8765}
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
       LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}
       AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-168h}

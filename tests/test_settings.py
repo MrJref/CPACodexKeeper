@@ -37,7 +37,7 @@ class SettingsTests(unittest.TestCase):
         self.assertTrue(settings.enable_refresh)
         self.assertTrue(settings.enable_auto_delete)
         self.assertFalse(settings.webui_enabled)
-        self.assertEqual(settings.app_port, 8080)
+        self.assertEqual(settings.app_port, 8765)
         self.assertFalse(settings.auth_enabled)
         self.assertEqual(settings.log_max_lines, 500)
 

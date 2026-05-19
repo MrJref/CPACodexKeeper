@@ -101,6 +101,7 @@ class WebUITests(unittest.TestCase):
 
         self.assertFalse(status["serviceRunning"])
         self.assertIsNone(status["nextRunAt"])
+        self.assertEqual(status["settings"]["appPort"], 8765)
 
     def test_runtime_can_start_and_stop_scheduler(self):
         settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret", cron_expression="* * * * * ?")

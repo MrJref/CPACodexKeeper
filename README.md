@@ -147,7 +147,7 @@ cp .env.example .env
 - `CPA_WORKER_THREADS`：单轮巡检的并发线程数，默认 `8`
 - `WEBUI_ENABLED`：是否启动内置 WebUI，默认 `false`；`docker-compose.yml` 默认设为 `true`
 - `APP_HOST`：WebUI 监听地址，默认 `0.0.0.0`
-- `APP_PORT`：WebUI 监听端口，默认 `8080`
+- `APP_PORT`：WebUI 监听端口，默认 `8765`
 - `LOG_MAX_LINES`：WebUI 最近日志内存保留最大行数，默认 `500`
 - `AUTH_ENABLED`：是否启用 WebUI 登录保护，默认 `false`
 - `LOGIN_PASSWORD`：启用 `AUTH_ENABLED=true` 时必填的登录密码
@@ -237,7 +237,7 @@ docker build -t cpacodexkeeper .
 ```bash
 docker run -d \
   --name cpacodexkeeper \
-  -p 8080:8080 \
+  -p 8765:8765 \
   -e CPA_ENDPOINT=https://your-cpa-endpoint \
   -e CPA_TOKEN=your-management-token \
   -e 'CPA_CRON=0 0/10 * * * ?' \
@@ -262,10 +262,10 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Compose 默认映射 `${APP_PORT:-8080}` 并启用 `WEBUI_ENABLED=true`。如果 `config.yml` 中配置了 `webui.port` 或 `APP_PORT`，应用内部端口会使用配置文件值；端口映射仍由 Compose 启动时的 `${APP_PORT:-8080}` 决定。启动后访问：
+Compose 默认映射 `${APP_PORT:-8765}` 并启用 `WEBUI_ENABLED=true`。如果 `config.yml` 中配置了 `webui.port` 或 `APP_PORT`，应用内部端口会使用配置文件值；端口映射仍由 Compose 启动时的 `${APP_PORT:-8765}` 决定。启动后访问：
 
 ```text
-http://localhost:8080
+http://localhost:8765
 ```
 
 ---

@@ -116,8 +116,8 @@ INDEX_HTML = """<!doctype html>
                 <input id="configMaxRetries" name="maxRetries" type="number" min="0" max="5">
               </label>
               <label class="field">
-                <span>登录有效期 (秒)</span>
-                <input id="configAuthSessionTtl" name="authSessionTtlSeconds" type="number" min="1">
+                <span>登录有效期 (小时)</span>
+                <input id="configAuthSessionTtl" name="authSessionTtlSeconds" type="number" min="0.00001" step="0.00001">
               </label>
               <label class="check-field">
                 <input id="configEnableRefresh" name="enableRefresh" type="checkbox">
@@ -578,6 +578,19 @@ function formatDate(value) {
   return date.toLocaleString();
 }
 
+function formatHours(seconds) {
+  if (seconds === null || seconds === undefined || seconds === '') return '';
+  const hours = Number(seconds) / 3600;
+  if (!Number.isFinite(hours) || hours <= 0) return '';
+  return hours.toFixed(5).replace(/\\.?0+$/, '');
+}
+
+function parseHours(value) {
+  const hours = Number.parseFloat(value);
+  if (!Number.isFinite(hours) || hours <= 0) return '';
+  return String(Math.round(hours * 3600));
+}
+
 function setBadge(el, text, kind) {
   el.textContent = text;
   el.classList.remove('ok', 'warn');
@@ -648,7 +661,7 @@ function fillConfigForm(values = {}) {
   $('configCpaTimeout').value = values.cpaTimeoutSeconds ?? '';
   $('configUsageTimeout').value = values.usageTimeoutSeconds ?? '';
   $('configMaxRetries').value = values.maxRetries ?? '';
-  $('configAuthSessionTtl').value = values.authSessionTtlSeconds ?? '';
+  $('configAuthSessionTtl').value = formatHours(values.authSessionTtlSeconds);
   $('configEnableRefresh').checked = Boolean(values.enableRefresh);
   $('configEnableAutoDelete').checked = values.enableAutoDelete !== false;
   $('configWebuiEnabled').checked = Boolean(values.webuiEnabled);
@@ -680,7 +693,7 @@ function configPayload() {
     cpaTimeoutSeconds: $('configCpaTimeout').value,
     usageTimeoutSeconds: $('configUsageTimeout').value,
     maxRetries: $('configMaxRetries').value,
-    authSessionTtlSeconds: $('configAuthSessionTtl').value,
+    authSessionTtlSeconds: parseHours($('configAuthSessionTtl').value),
     enableRefresh: $('configEnableRefresh').checked,
     enableAutoDelete: $('configEnableAutoDelete').checked,
     webuiEnabled: $('configWebuiEnabled').checked,
