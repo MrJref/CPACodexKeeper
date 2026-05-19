@@ -11,7 +11,10 @@ INDEX_HTML = """<!doctype html>
     <section id="loginPage" class="login-page hidden">
       <div class="login-frame">
         <div class="brand-block">
-          <span class="eyebrow">CPA Codex Keeper</span>
+          <div class="brand-mark">
+            <span class="eyebrow">CPA Codex Keeper</span>
+            <span id="loginVersionBadge" class="version-badge">v-</span>
+          </div>
           <h1>登录控制台</h1>
           <p>使用与 CPA Usage Keeper 一致的暖灰玻璃界面，集中查看巡检状态、运行日志和手动触发维护任务。</p>
         </div>
@@ -29,7 +32,10 @@ INDEX_HTML = """<!doctype html>
     <main id="dashboard" class="page-frame hidden">
       <header class="top-bar">
         <div class="brand-row">
-          <span class="eyebrow">CPA Codex Keeper</span>
+          <div class="brand-mark">
+            <span class="eyebrow">CPA Codex Keeper</span>
+            <span id="versionBadge" class="version-badge">v-</span>
+          </div>
           <div>
             <h1>Codex Token 维护面板</h1>
             <p>守护进程、手动巡检、日志和 CPA 连接状态统一入口。</p>
@@ -254,6 +260,7 @@ button, input { font: inherit; }
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.08);
 }
 .brand-row { display: flex; gap: 16px; align-items: center; min-width: 0; }
+.brand-mark { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .brand-row h1, .hero-card h2, .section-head h2 {
   margin: 0;
   letter-spacing: -0.04em;
@@ -273,6 +280,20 @@ button, input { font: inherit; }
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+.version-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-secondary) 84%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .04em;
   white-space: nowrap;
 }
 .top-actions { display: flex; align-items: stretch; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
@@ -563,6 +584,12 @@ function setBadge(el, text, kind) {
   if (kind) el.classList.add(kind);
 }
 
+function setAppVersion(version) {
+  const text = version ? `v${version}` : 'v-';
+  $('versionBadge').textContent = text;
+  $('loginVersionBadge').textContent = text;
+}
+
 function syncProxyTestButton(proxyConfigured = false) {
   $('proxyTestButton').disabled = !proxyConfigured && !$('configProxy').value.trim();
 }
@@ -572,6 +599,7 @@ function renderStatus(data) {
   const proxyTest = data.proxyTest || {};
   const serviceRunning = Boolean(data.serviceRunning);
   state.serviceRunning = serviceRunning;
+  setAppVersion(data.appVersion);
   $('serviceToggleButton').textContent = serviceRunning ? '停止' : '启动';
   if (data.running) {
     $('serviceState').textContent = '巡检运行中';
@@ -808,6 +836,7 @@ async function boot() {
   $('configForm').addEventListener('submit', saveConfig);
   $('logMaxLinesInput').addEventListener('input', scheduleLogSettingsSave);
   const session = await api('/api/auth/session').catch(() => ({ authenticated: false, authEnabled: true }));
+  setAppVersion(session.appVersion);
   state.authEnabled = Boolean(session.authEnabled);
   state.authenticated = Boolean(session.authenticated);
   if (state.authenticated) {

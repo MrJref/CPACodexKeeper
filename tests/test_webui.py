@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from src.settings import Settings
-from src.webui import HistoryLogger, KeeperRuntime, WebUIService, proxy_label
+from src.webui import APP_VERSION, HistoryLogger, KeeperRuntime, WebUIService, proxy_label
 
 
 class FakeHandler:
@@ -80,8 +80,18 @@ class WebUITests(unittest.TestCase):
         status = runtime.status()
 
         self.assertEqual(status["settings"]["cpaEndpoint"], "https://example.com")
+        self.assertEqual(status["appVersion"], APP_VERSION)
         self.assertNotIn("cpaToken", status["settings"])
         self.assertNotIn("super-secret", str(status))
+
+    def test_session_payload_exposes_app_version(self):
+        settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret")
+        service = WebUIService(KeeperRuntime(settings))
+
+        payload = service.session_payload(FakeHandler())
+
+        self.assertEqual(payload["appVersion"], APP_VERSION)
+        self.assertTrue(payload["authenticated"])
 
     def test_runtime_service_is_stopped_by_default(self):
         settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret")

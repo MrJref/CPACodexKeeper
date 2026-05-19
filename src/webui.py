@@ -2,10 +2,13 @@ import json
 import secrets
 import threading
 import time
+import tomllib
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.metadata import PackageNotFoundError, version as package_version
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -19,6 +22,24 @@ from .webui_assets import APP_CSS, APP_JS, INDEX_HTML
 
 
 SESSION_COOKIE = "cpacodexkeeper_session"
+
+
+def _load_app_version() -> str:
+    try:
+        return package_version("cpacodexkeeper")
+    except PackageNotFoundError:
+        pass
+
+    pyproject_file = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    try:
+        pyproject = tomllib.loads(pyproject_file.read_text(encoding="utf-8"))
+        version = pyproject["project"]["version"]
+    except (OSError, KeyError, tomllib.TOMLDecodeError):
+        return "unknown"
+    return str(version)
+
+
+APP_VERSION = _load_app_version()
 
 
 def utc_now_iso() -> str:
@@ -415,6 +436,7 @@ class KeeperRuntime:
     def status(self) -> dict[str, Any]:
         with self._state_lock:
             return {
+                "appVersion": APP_VERSION,
                 "serviceRunning": self.scheduler_active(),
                 "running": self.running,
                 "roundNo": self.round_no,
@@ -456,8 +478,9 @@ class WebUIService:
     def settings(self) -> Settings:
         return self.runtime.settings
 
-    def session_payload(self, handler: BaseHTTPRequestHandler) -> dict[str, bool]:
+    def session_payload(self, handler: BaseHTTPRequestHandler) -> dict[str, Any]:
         return {
+            "appVersion": APP_VERSION,
             "authEnabled": self.settings.auth_enabled,
             "authenticated": self.is_authenticated(handler),
         }
@@ -563,7 +586,10 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                     f"{SESSION_COOKIE}={token}; Max-Age={max_age}; Path=/; "
                     "HttpOnly; SameSite=Lax"
                 )
-            self._send_json({"authenticated": True, "authEnabled": self.service.settings.auth_enabled}, headers=headers)
+            self._send_json(
+                {"appVersion": APP_VERSION, "authenticated": True, "authEnabled": self.service.settings.auth_enabled},
+                headers=headers,
+            )
             return
         if self.path == "/api/auth/logout":
             self.service.logout(self)
