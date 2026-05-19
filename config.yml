@@ -5,7 +5,7 @@
 #   endpoint: https://your-cpa-endpoint
 #   token: your-management-token
 #   proxy:
-#   interval: 1800
+#   cron: "0 0/10 * * * ?"
 #   quota_threshold: 1
 #   expiry_threshold_days: 3
 #   enable_refresh: true

@@ -4,7 +4,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .cpa_client import CPAClient
-from .logging_utils import ConsoleLogger, TokenLogger
+from .cron_schedule import next_cron_timestamp
+from .logging_utils import ConsoleLogger, TokenLogger, current_log_time
 from .models import MaintainerStats, format_window_label
 from .openai_client import OpenAIClient, parse_usage_info
 from .settings import Settings
@@ -411,6 +412,7 @@ class CPACodexKeeper:
         tokens = self.get_token_list()
         if not tokens:
             self.log("WARN", "未获取到任何 codex Token")
+            self.log("INFO", f"完成时间: {current_log_time()}")
             return
 
         self._set_total(len(tokens))
@@ -450,19 +452,23 @@ class CPACodexKeeper:
         self.log("INFO", f"- 跳过: {stats['skipped']}", indent=1)
         self.log("INFO", f"- 网络失败: {stats['network_error']}", indent=1)
         self.logger.divider()
+        self.log("INFO", f"完成时间: {current_log_time()}")
 
-    def run_forever(self, interval_seconds=1800):
+    def run_forever(self, cron_expression=None):
         round_no = 0
-        self.log("INFO", f"守护模式启动，执行间隔: {interval_seconds} 秒")
+        cron_expression = cron_expression or self.settings.cron_expression
+        self.log("INFO", f"守护模式启动，Cron: {cron_expression}")
         while True:
+            next_run_at = next_cron_timestamp(cron_expression)
+            wait_seconds = max(0, next_run_at - time.time())
+            self.log("INFO", f"下次自动巡检: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(next_run_at))}")
+            time.sleep(wait_seconds)
             round_no += 1
             self.log("INFO", f"开始第 {round_no} 轮巡检")
             try:
                 self.run()
-                self.log("INFO", f"第 {round_no} 轮巡检结束")
+                self.log("INFO", f"第 {round_no} 轮巡检结束，完成时间: {current_log_time()}")
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
                 self.log("ERROR", f"第 {round_no} 轮巡检异常: {exc}")
-            self.log("INFO", f"等待 {interval_seconds} 秒后开始下一轮")
-            time.sleep(interval_seconds)

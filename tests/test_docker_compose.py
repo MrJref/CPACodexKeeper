@@ -10,6 +10,7 @@ class DockerComposeTests(unittest.TestCase):
         compose_text = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
         self.assertIn("CPA_ENABLE_REFRESH:", compose_text)
+        self.assertIn("CPA_CRON:", compose_text)
         self.assertIn("CPA_ENABLE_REFRESH: ${CPA_ENABLE_REFRESH:-true}", compose_text)
         self.assertIn("CPA_ENABLE_AUTO_DELETE: ${CPA_ENABLE_AUTO_DELETE:-true}", compose_text)
         self.assertIn("CPA_WORKER_THREADS:", compose_text)

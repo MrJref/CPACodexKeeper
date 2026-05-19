@@ -82,8 +82,8 @@ INDEX_HTML = """<!doctype html>
                 <small id="proxyValue" class="field-hint">-</small>
               </label>
               <label class="field">
-                <span>巡检间隔 (秒)</span>
-                <input id="configInterval" name="intervalSeconds" type="number" min="1">
+                <span>巡检 Cron</span>
+                <input id="configCron" name="cronExpression" type="text" placeholder="0 0/10 * * * ?">
               </label>
               <label class="field">
                 <span>剩余额度阈值 (%)</span>
@@ -298,6 +298,11 @@ button, input { font: inherit; }
   color: var(--text-primary);
   font-weight: 700;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+.top-actions .btn, .top-actions .pill-btn {
+  min-width: 84px;
+  border-radius: 10px;
+  padding-inline: 16px;
 }
 .card {
   border: 1px solid var(--border-color);
@@ -608,7 +613,7 @@ function fillConfigForm(values = {}) {
   $('configCpaToken').value = '';
   $('configCpaToken').placeholder = values.cpaTokenConfigured ? '已配置，留空则不修改' : '未配置，请填写';
   $('configProxy').value = values.proxy || '';
-  $('configInterval').value = values.intervalSeconds ?? '';
+  $('configCron').value = values.cronExpression ?? '';
   $('configQuotaThreshold').value = values.quotaThreshold ?? '';
   $('configExpiryThreshold').value = values.expiryThresholdDays ?? '';
   $('configWorkers').value = values.workerThreads ?? '';
@@ -640,7 +645,7 @@ function configPayload() {
     cpaEndpoint: $('configCpaEndpoint').value.trim(),
     cpaToken: $('configCpaToken').value.trim(),
     proxy: $('configProxy').value.trim(),
-    intervalSeconds: $('configInterval').value,
+    cronExpression: $('configCron').value.trim(),
     quotaThreshold: $('configQuotaThreshold').value,
     expiryThresholdDays: $('configExpiryThreshold').value,
     workerThreads: $('configWorkers').value,

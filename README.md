@@ -136,7 +136,7 @@ cp .env.example .env
 - `CPA_ENDPOINT`：CPA 管理 API 地址
 - `CPA_TOKEN`：CPA 管理 token
 - `CPA_PROXY`：可选代理
-- `CPA_INTERVAL`：守护模式轮询间隔，默认 `1800`
+- `CPA_CRON`：守护模式自动巡检 cron，使用 6 位格式 `秒 分 时 日 月 星期`，默认 `0 0/10 * * * ?`
 - `CPA_QUOTA_THRESHOLD`：剩余额度禁用阈值，默认 `1`；例如 `30` 表示剩余额度小于 30% 时禁用
 - `CPA_EXPIRY_THRESHOLD_DAYS`：禁用 token 的刷新阈值天数，默认 `3`
 - `CPA_ENABLE_REFRESH`：是否启用对禁用 token 的自动刷新，默认 `true`
@@ -240,7 +240,7 @@ docker run -d \
   -p 8080:8080 \
   -e CPA_ENDPOINT=https://your-cpa-endpoint \
   -e CPA_TOKEN=your-management-token \
-  -e CPA_INTERVAL=1800 \
+  -e 'CPA_CRON=0 0/10 * * * ?' \
   -e WEBUI_ENABLED=true \
   -e LOG_MAX_LINES=500 \
   -e AUTH_ENABLED=true \
@@ -296,6 +296,7 @@ http://localhost:8080
 - 已刷新
 - 跳过
 - 网络失败
+- 完成时间（`yyyy-MM-dd HH:mm:ss`）
 
 ---
 

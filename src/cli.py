@@ -30,7 +30,7 @@ def main() -> int:
 
     maintainer = CPACodexKeeper(settings=settings, dry_run=args.dry_run)
     if args.daemon:
-        maintainer.run_forever(interval_seconds=settings.interval_seconds)
+        maintainer.run_forever(cron_expression=settings.cron_expression)
         return 0
     maintainer.run()
     return 0

@@ -711,6 +711,19 @@ class MaintainerTests(unittest.TestCase):
         as_completed_mock.side_effect = lambda items: list(items)
         self.maintainer.process_token = Mock(return_value="alive")
 
-        self.maintainer.run()
+        with patch("src.maintainer.current_log_time", return_value="2026-05-19 12:34:56"):
+            self.maintainer.run()
 
         self.maintainer.log.assert_any_call("INFO", "线程数: 5")
+        self.maintainer.log.assert_any_call("INFO", "完成时间: 2026-05-19 12:34:56")
+
+    def test_run_logs_completion_time_when_no_tokens(self):
+        self.maintainer.get_token_list = Mock(return_value=[])
+        self.maintainer.log_startup = Mock()
+        self.maintainer.log = Mock()
+
+        with patch("src.maintainer.current_log_time", return_value="2026-05-19 12:34:56"):
+            self.maintainer.run()
+
+        self.maintainer.log.assert_any_call("WARN", "未获取到任何 codex Token")
+        self.maintainer.log.assert_any_call("INFO", "完成时间: 2026-05-19 12:34:56")

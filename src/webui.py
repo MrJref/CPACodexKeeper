@@ -11,7 +11,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 from curl_cffi import requests
 
-from .logging_utils import ConsoleLogger
+from .cron_schedule import next_cron_timestamp
+from .logging_utils import ConsoleLogger, current_log_time
 from .maintainer import CPACodexKeeper
 from .settings import PROJECT_CONFIG_FILE, Settings, SettingsError, load_settings, update_config_file
 from .webui_assets import APP_CSS, APP_JS, INDEX_HTML
@@ -96,7 +97,7 @@ def _config_updates_from_payload(payload: dict[str, Any]) -> dict[str, dict[str,
     if token:
         cpa["token"] = token
     _set_if_present(cpa, "proxy", _payload_string(payload, "proxy", allow_empty=True))
-    _set_if_present(cpa, "interval", _payload_int(payload, "intervalSeconds", minimum=1))
+    _set_if_present(cpa, "cron", _payload_string(payload, "cronExpression", allow_empty=False))
     _set_if_present(cpa, "quota_threshold", _payload_int(payload, "quotaThreshold", minimum=0, maximum=100))
     _set_if_present(cpa, "expiry_threshold_days", _payload_int(payload, "expiryThresholdDays", minimum=0))
     _set_if_present(cpa, "enable_refresh", _payload_bool(payload, "enableRefresh"))
@@ -203,7 +204,7 @@ class KeeperRuntime:
             self.logger.set_max_lines(settings.log_max_lines)
             self.keeper = CPACodexKeeper(settings=settings, dry_run=self.dry_run, logger=self.logger)
             scheduler_active = bool(self._scheduler_thread and self._scheduler_thread.is_alive() and not self._stop_event.is_set())
-            self.next_run_at = time.time() + settings.interval_seconds if scheduler_active else self.next_run_at
+            self.next_run_at = next_cron_timestamp(settings.cron_expression) if scheduler_active else self.next_run_at
 
     def config_payload(self) -> dict[str, Any]:
         return {
@@ -212,7 +213,7 @@ class KeeperRuntime:
                 "cpaEndpoint": self.settings.cpa_endpoint,
                 "cpaTokenConfigured": bool(self.settings.cpa_token),
                 "proxy": self.settings.proxy or "",
-                "intervalSeconds": self.settings.interval_seconds,
+                "cronExpression": self.settings.cron_expression,
                 "quotaThreshold": self.settings.quota_threshold,
                 "expiryThresholdDays": self.settings.expiry_threshold_days,
                 "enableRefresh": self.settings.enable_refresh,
@@ -295,9 +296,16 @@ class KeeperRuntime:
         self._stop_event.set()
 
     def _scheduler_loop(self) -> None:
-        self.logger.log("INFO", f"守护模式启动，执行间隔: {self.settings.interval_seconds} 秒")
+        self.logger.log("INFO", f"守护模式启动，Cron: {self.settings.cron_expression}")
         try:
             while not self._stop_event.is_set():
+                with self._state_lock:
+                    cron_expression = self.settings.cron_expression
+                    self.next_run_at = next_cron_timestamp(cron_expression)
+                    next_run_at = self.next_run_at
+                self.logger.log("INFO", f"下次自动巡检: {datetime.fromtimestamp(next_run_at).strftime('%Y-%m-%d %H:%M:%S')}")
+                if self._stop_event.wait(max(0, next_run_at - time.time())):
+                    break
                 with self._state_lock:
                     self.round_no += 1
                     round_no = self.round_no
@@ -305,14 +313,7 @@ class KeeperRuntime:
                 self.logger.log("INFO", f"开始第 {round_no} 轮巡检")
                 started = self._execute_round()
                 if started:
-                    self.logger.log("INFO", f"第 {round_no} 轮巡检结束")
-                if self._stop_event.is_set():
-                    break
-                with self._state_lock:
-                    self.next_run_at = time.time() + self.settings.interval_seconds
-                    wait_seconds = self.settings.interval_seconds
-                self.logger.log("INFO", f"等待 {wait_seconds} 秒后开始下一轮")
-                self._stop_event.wait(wait_seconds)
+                    self.logger.log("INFO", f"第 {round_no} 轮巡检结束，完成时间: {current_log_time()}")
         finally:
             with self._state_lock:
                 self.next_run_at = None
@@ -426,7 +427,7 @@ class KeeperRuntime:
                 "logs": self.logger.snapshot(),
                 "settings": {
                     "cpaEndpoint": self.settings.cpa_endpoint,
-                    "intervalSeconds": self.settings.interval_seconds,
+                    "cronExpression": self.settings.cron_expression,
                     "quotaThreshold": self.settings.quota_threshold,
                     "expiryThresholdDays": self.settings.expiry_threshold_days,
                     "enableRefresh": self.settings.enable_refresh,

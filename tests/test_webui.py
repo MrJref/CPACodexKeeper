@@ -93,7 +93,7 @@ class WebUITests(unittest.TestCase):
         self.assertIsNone(status["nextRunAt"])
 
     def test_runtime_can_start_and_stop_scheduler(self):
-        settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret", interval_seconds=60)
+        settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret", cron_expression="* * * * * ?")
         runtime = KeeperRuntime(settings)
 
         def idle_scheduler():
@@ -106,6 +106,22 @@ class WebUITests(unittest.TestCase):
 
         runtime._scheduler_thread.join(timeout=1)
         self.assertFalse(runtime.status()["serviceRunning"])
+
+    def test_scheduler_logs_round_completion_time(self):
+        settings = Settings(cpa_endpoint="https://example.com", cpa_token="secret", cron_expression="* * * * * ?")
+        runtime = KeeperRuntime(settings)
+
+        def execute_round():
+            runtime._stop_event.set()
+            return True
+
+        runtime._execute_round = Mock(side_effect=execute_round)
+
+        with patch("src.webui.next_cron_timestamp", return_value=0), patch("src.webui.current_log_time", return_value="2026-05-19 12:34:56"):
+            with redirect_stdout(StringIO()):
+                runtime._scheduler_loop()
+
+        self.assertIn("[*] 第 1 轮巡检结束，完成时间: 2026-05-19 12:34:56", runtime.logger.snapshot())
 
     def test_runtime_uses_configured_log_max_lines(self):
         settings = Settings(
@@ -144,15 +160,23 @@ class WebUITests(unittest.TestCase):
             runtime = KeeperRuntime(settings)
 
             with patch("src.webui.PROJECT_CONFIG_FILE", config_path), patch("src.settings.PROJECT_CONFIG_FILE", config_path), patch.dict(os.environ, {}, clear=True):
-                result = runtime.update_config({"cpaEndpoint": "https://example.com", "quotaThreshold": 30, "enableAutoDelete": False})
+                result = runtime.update_config({
+                    "cpaEndpoint": "https://example.com",
+                    "cronExpression": "0 0/15 * * * ?",
+                    "quotaThreshold": 30,
+                    "enableAutoDelete": False,
+                })
 
+            self.assertEqual(runtime.settings.cron_expression, "0 0/15 * * * ?")
             self.assertEqual(runtime.settings.quota_threshold, 30)
             self.assertFalse(runtime.settings.enable_auto_delete)
             self.assertEqual(runtime.keeper.settings.quota_threshold, 30)
             self.assertEqual(runtime.logger.max_lines, 5)
+            self.assertEqual(result["values"]["cronExpression"], "0 0/15 * * * ?")
             self.assertEqual(result["values"]["quotaThreshold"], 30)
             self.assertFalse(result["values"]["enableAutoDelete"])
             text = config_path.read_text(encoding="utf-8")
+            self.assertIn("  cron: \"0 0/15 * * * ?\"\n", text)
             self.assertIn("  quota_threshold: 30\n", text)
             self.assertIn("  enable_auto_delete: false\n", text)
             self.assertIn("  log_max_lines: 5\n", text)

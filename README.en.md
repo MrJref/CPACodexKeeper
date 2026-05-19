@@ -136,7 +136,7 @@ Then edit `.env`, or edit `config.yml` directly.
 - `CPA_ENDPOINT`: CPA management API base URL
 - `CPA_TOKEN`: CPA management token
 - `CPA_PROXY`: optional HTTP/HTTPS proxy
-- `CPA_INTERVAL`: daemon interval in seconds, default `1800`
+- `CPA_CRON`: daemon auto-inspection cron in 6-field format `second minute hour day month weekday`, default `0 0/10 * * * ?`
 - `CPA_QUOTA_THRESHOLD`: remaining-quota disable threshold, default `1`; for example, `30` disables when remaining quota is below 30%
 - `CPA_EXPIRY_THRESHOLD_DAYS`: refresh threshold in days for disabled tokens, default `3`
 - `CPA_ENABLE_REFRESH`: whether automatic refresh for disabled tokens is enabled, default `true`
@@ -240,7 +240,7 @@ docker run -d \
   -p 8080:8080 \
   -e CPA_ENDPOINT=https://your-cpa-endpoint \
   -e CPA_TOKEN=your-management-token \
-  -e CPA_INTERVAL=1800 \
+  -e 'CPA_CRON=0 0/10 * * * ?' \
   -e WEBUI_ENABLED=true \
   -e LOG_MAX_LINES=500 \
   -e AUTH_ENABLED=true \
@@ -296,6 +296,7 @@ At the end of each round, it prints a summary including:
 - refreshed
 - skipped
 - network errors
+- completion time (`yyyy-MM-dd HH:mm:ss`)
 
 ---
 

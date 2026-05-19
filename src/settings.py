@@ -4,8 +4,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from .cron_schedule import CronExpressionError, normalize_cron_expression
 
-DEFAULT_INTERVAL_SECONDS = 1800
+DEFAULT_CRON_EXPRESSION = "0 0/10 * * * ?"
 DEFAULT_QUOTA_THRESHOLD = 1
 DEFAULT_EXPIRY_THRESHOLD_DAYS = 3
 DEFAULT_USAGE_TIMEOUT_SECONDS = 15
@@ -27,6 +28,7 @@ CONFIG_KEY_ALIASES = {
     "cpa.endpoint": "CPA_ENDPOINT",
     "cpa.token": "CPA_TOKEN",
     "cpa.proxy": "CPA_PROXY",
+    "cpa.cron": "CPA_CRON",
     "cpa.interval": "CPA_INTERVAL",
     "cpa.quota_threshold": "CPA_QUOTA_THRESHOLD",
     "cpa.expiry_threshold_days": "CPA_EXPIRY_THRESHOLD_DAYS",
@@ -55,7 +57,7 @@ class Settings:
     cpa_endpoint: str
     cpa_token: str
     proxy: str | None = None
-    interval_seconds: int = DEFAULT_INTERVAL_SECONDS
+    cron_expression: str = DEFAULT_CRON_EXPRESSION
     quota_threshold: int = DEFAULT_QUOTA_THRESHOLD
     expiry_threshold_days: int = DEFAULT_EXPIRY_THRESHOLD_DAYS
     usage_timeout_seconds: int = DEFAULT_USAGE_TIMEOUT_SECONDS
@@ -224,6 +226,37 @@ def _read_duration_seconds(name: str, default: int, env_values: dict[str, str], 
     return seconds
 
 
+def _cron_from_legacy_interval(seconds: int) -> str:
+    if seconds <= 0:
+        raise SettingsError("CPA_INTERVAL must be positive")
+    if seconds < 60:
+        return f"0/{seconds} * * * * ?"
+    if seconds % 60 == 0 and seconds // 60 <= 59:
+        return f"0 0/{seconds // 60} * * * ?"
+    if seconds % 3600 == 0 and seconds // 3600 <= 23:
+        return f"0 0 0/{seconds // 3600} * * ?"
+    if seconds % 86400 == 0 and seconds // 86400 <= 31:
+        return f"0 0 0 1/{seconds // 86400} * ?"
+    raise SettingsError("CPA_INTERVAL cannot be converted to a 6-field cron expression")
+
+
+def _read_cron_expression(env_values: dict[str, str], config_values: dict[str, str]) -> str:
+    raw = _get_config_value("CPA_CRON", env_values, config_values)
+    if raw in (None, ""):
+        legacy_interval = _get_config_value("CPA_INTERVAL", env_values, config_values)
+        if legacy_interval in (None, ""):
+            raw = DEFAULT_CRON_EXPRESSION
+        else:
+            try:
+                raw = _cron_from_legacy_interval(int(legacy_interval))
+            except ValueError as exc:
+                raise SettingsError("CPA_INTERVAL must be an integer") from exc
+    try:
+        return normalize_cron_expression(raw)
+    except CronExpressionError as exc:
+        raise SettingsError(f"CPA_CRON is invalid: {exc}") from exc
+
+
 def _read_string(name: str, default: str, env_values: dict[str, str], config_values: dict[str, str]) -> str:
     return (_get_config_value(name, env_values, config_values) or default).strip()
 
@@ -236,7 +269,7 @@ def _format_yaml_scalar(value: Any) -> str:
     text = str(value)
     if text == "":
         return ""
-    if any(char in text for char in ["#", ":", "\n", '"', "'"]) or text != text.strip():
+    if any(char in text for char in ["#", ":", "\n", '"', "'"]) or any(char.isspace() for char in text) or text != text.strip():
         escaped = text.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
     return text
@@ -331,7 +364,7 @@ def load_settings(env_file: Path | None = None, config_file: Path | None = None)
         cpa_endpoint=endpoint,
         cpa_token=token,
         proxy=proxy,
-        interval_seconds=_read_int("CPA_INTERVAL", DEFAULT_INTERVAL_SECONDS, env_values, config_values, minimum=1),
+        cron_expression=_read_cron_expression(env_values, config_values),
         quota_threshold=_read_int(
             "CPA_QUOTA_THRESHOLD",
             DEFAULT_QUOTA_THRESHOLD,

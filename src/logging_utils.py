@@ -2,6 +2,13 @@ import threading
 from datetime import datetime
 
 
+LOG_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+def current_log_time() -> str:
+    return datetime.now().strftime(LOG_TIME_FORMAT)
+
+
 class ConsoleLogger:
     PREFIX_MAP = {
         "INFO": "[*]",
@@ -31,7 +38,7 @@ class ConsoleLogger:
     def banner(self, title: str) -> None:
         self.divider()
         self.log("INFO", title)
-        self.log("INFO", f"time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self.log("INFO", f"time: {current_log_time()}")
 
     def divider(self) -> None:
         with self._lock:
