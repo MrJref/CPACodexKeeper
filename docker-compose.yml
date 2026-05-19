@@ -24,6 +24,7 @@ services:
       WEBUI_ENABLED: ${WEBUI_ENABLED:-true}
       APP_HOST: ${APP_HOST:-0.0.0.0}
       APP_PORT: ${APP_PORT:-8765}
+      TZ: ${TZ:-Asia/Shanghai}
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
       LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}
       AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-168h}
