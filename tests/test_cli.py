@@ -57,4 +57,4 @@ class CLITests(unittest.TestCase):
         exit_code = main()
 
         self.assertEqual(exit_code, 0)
-        serve_webui_mock.assert_called_once_with(settings=settings, dry_run=False, start_scheduler=False)
+        serve_webui_mock.assert_called_once_with(settings=settings, dry_run=False, start_scheduler=True)

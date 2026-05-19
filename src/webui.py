@@ -707,7 +707,7 @@ class WebUIServer(ThreadingHTTPServer):
     service: WebUIService
 
 
-def serve_webui(settings: Settings, *, dry_run: bool = False, start_scheduler: bool = False) -> None:
+def serve_webui(settings: Settings, *, dry_run: bool = False, start_scheduler: bool = True) -> None:
     runtime = KeeperRuntime(settings=settings, dry_run=dry_run)
     server = WebUIServer((settings.app_host, settings.app_port), WebUIRequestHandler)
     server.service = WebUIService(runtime)

@@ -44,7 +44,7 @@ INDEX_HTML = """<!doctype html>
         <div class="top-actions">
           <button id="themeToggle" class="pill-btn" type="button">深色</button>
           <button id="refreshButton" class="pill-btn" type="button">刷新</button>
-          <button id="serviceToggleButton" class="pill-btn" type="button">启动</button>
+          <button id="serviceToggleButton" class="pill-btn" type="button">停止</button>
           <button id="runButton" class="btn btn-primary" type="button">立即巡检</button>
           <button id="logoutButton" class="pill-btn hidden" type="button">退出</button>
         </div>
@@ -576,7 +576,7 @@ const state = {
   authenticated: false,
   theme: localStorage.getItem('cpacodexkeeper-theme') || 'light',
   configDirty: false,
-  serviceRunning: false,
+  serviceRunning: true,
   logSettingsTimer: null,
   logsText: '',
   logSearchOpen: false,
