@@ -267,6 +267,12 @@ class WebUITests(unittest.TestCase):
         self.assertIn("event.ctrlKey", APP_JS)
         self.assertIn("event.metaKey", APP_JS)
 
+    def test_webui_assets_include_log_auto_scroll_guard(self):
+        self.assertIn("logAutoScroll: true", APP_JS)
+        self.assertIn("isLogScrolledToBottom", APP_JS)
+        self.assertIn("settleLogScroll", APP_JS)
+        self.assertIn("addEventListener('scroll', syncLogAutoScroll)", APP_JS)
+
 
 if __name__ == "__main__":
     unittest.main()

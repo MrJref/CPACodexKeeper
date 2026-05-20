@@ -583,11 +583,13 @@ const state = {
   logSearchQuery: '',
   logSearchIndex: 0,
   logMatches: [],
+  logAutoScroll: true,
 };
 
 const $ = (id) => document.getElementById(id);
 const loginPage = $('loginPage');
 const dashboard = $('dashboard');
+const LOG_BOTTOM_TOLERANCE_PX = 8;
 
 function setTheme(theme) {
   state.theme = theme === 'dark' ? 'dark' : 'light';
@@ -692,14 +694,39 @@ function updateLogSearchCount() {
   $('logSearchCount').textContent = count ? `${state.logSearchIndex + 1}/${count}` : '0/0';
 }
 
-function renderLogOutput() {
+function isLogScrolledToBottom(output = $('logOutput')) {
+  return output.scrollHeight - output.scrollTop - output.clientHeight <= LOG_BOTTOM_TOLERANCE_PX;
+}
+
+function scrollLogToBottom(output = $('logOutput')) {
+  output.scrollTop = output.scrollHeight;
+  state.logAutoScroll = true;
+}
+
+function syncLogAutoScroll() {
+  state.logAutoScroll = isLogScrolledToBottom();
+}
+
+function settleLogScroll(output, previousScrollTop, shouldStickToBottom) {
+  if (shouldStickToBottom) {
+    scrollLogToBottom(output);
+  } else {
+    output.scrollTop = previousScrollTop;
+    state.logAutoScroll = isLogScrolledToBottom(output);
+  }
+}
+
+function renderLogOutput(options = {}) {
   const output = $('logOutput');
   const text = state.logsText || '等待日志...';
   const query = state.logSearchQuery.trim();
+  const previousScrollTop = output.scrollTop;
+  const shouldStickToBottom = state.logAutoScroll || isLogScrolledToBottom(output);
   if (!state.logSearchOpen || !query) {
     state.logMatches = [];
     output.textContent = text;
     updateLogSearchCount();
+    settleLogScroll(output, previousScrollTop, shouldStickToBottom);
     return;
   }
 
@@ -709,6 +736,7 @@ function renderLogOutput() {
     state.logSearchIndex = 0;
     output.textContent = text;
     updateLogSearchCount();
+    settleLogScroll(output, previousScrollTop, shouldStickToBottom);
     return;
   }
   if (state.logSearchIndex >= matches.length) state.logSearchIndex = 0;
@@ -725,15 +753,22 @@ function renderLogOutput() {
   html += escapeHtml(text.slice(cursor));
   output.innerHTML = html;
   updateLogSearchCount();
-  const current = output.querySelector('mark.current');
-  if (current) current.scrollIntoView({ block: 'center', inline: 'nearest' });
+  if (options.revealCurrentMatch) {
+    const current = output.querySelector('mark.current');
+    if (current) {
+      current.scrollIntoView({ block: 'center', inline: 'nearest' });
+      state.logAutoScroll = isLogScrolledToBottom(output);
+      return;
+    }
+  }
+  settleLogScroll(output, previousScrollTop, shouldStickToBottom);
 }
 
 function openLogSearch() {
   state.logSearchOpen = true;
   $('logSearchBar').classList.remove('hidden');
   $('logSearchInput').value = state.logSearchQuery;
-  renderLogOutput();
+  renderLogOutput({ revealCurrentMatch: true });
   $('logSearchInput').focus();
   $('logSearchInput').select();
 }
@@ -751,13 +786,13 @@ function closeLogSearch() {
 function updateLogSearchQuery() {
   state.logSearchQuery = $('logSearchInput').value;
   state.logSearchIndex = 0;
-  renderLogOutput();
+  renderLogOutput({ revealCurrentMatch: true });
 }
 
 function moveLogSearch(delta) {
   if (!state.logMatches.length) return;
   state.logSearchIndex = (state.logSearchIndex + delta + state.logMatches.length) % state.logMatches.length;
-  renderLogOutput();
+  renderLogOutput({ revealCurrentMatch: true });
 }
 
 function handleLogSearchShortcut(event) {
@@ -1009,6 +1044,7 @@ async function boot() {
   $('proxyTestButton').addEventListener('click', () => void testProxy());
   $('logoutButton').addEventListener('click', () => void logout());
   $('logOutput').addEventListener('click', () => $('logOutput').focus());
+  $('logOutput').addEventListener('scroll', syncLogAutoScroll);
   $('logSearchInput').addEventListener('input', updateLogSearchQuery);
   $('logSearchInput').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
