@@ -42,11 +42,15 @@ INDEX_HTML = """<!doctype html>
           </div>
         </div>
         <div class="top-actions">
-          <button id="themeToggle" class="pill-btn" type="button">深色</button>
-          <button id="refreshButton" class="pill-btn" type="button">刷新</button>
-          <button id="serviceToggleButton" class="pill-btn" type="button">停止</button>
-          <button id="runButton" class="btn btn-primary" type="button">立即巡检</button>
-          <button id="logoutButton" class="pill-btn hidden" type="button">退出</button>
+          <div class="utility-actions">
+            <button id="themeToggle" class="pill-btn" type="button">深色</button>
+            <button id="refreshButton" class="pill-btn" type="button">刷新</button>
+            <button id="logoutButton" class="pill-btn logout-btn hidden" type="button">退出</button>
+          </div>
+          <div class="run-actions">
+            <button id="serviceToggleButton" class="pill-btn" type="button">停止</button>
+            <button id="runButton" class="btn btn-primary" type="button">立即巡检</button>
+          </div>
         </div>
       </header>
 
@@ -88,8 +92,17 @@ INDEX_HTML = """<!doctype html>
                 <small id="proxyValue" class="field-hint">-</small>
               </label>
               <label class="field">
-                <span>巡检 Cron</span>
+                <span>备用巡检 Cron</span>
                 <input id="configCron" name="cronExpression" type="text" placeholder="0 0/10 * * * ?">
+                <small class="field-hint">未设置随机上下限时使用。</small>
+              </label>
+              <label class="field">
+                <span>巡检周期下限 (分钟)</span>
+                <input id="configIntervalMin" name="intervalMinMinutes" type="number" min="0.0167" step="0.0167" placeholder="10">
+              </label>
+              <label class="field">
+                <span>巡检周期上限 (分钟)</span>
+                <input id="configIntervalMax" name="intervalMaxMinutes" type="number" min="0.0167" step="0.0167" placeholder="30">
               </label>
               <label class="field">
                 <span>剩余额度阈值 (%)</span>
@@ -303,7 +316,19 @@ button, input { font: inherit; }
   letter-spacing: .04em;
   white-space: nowrap;
 }
-.top-actions { display: flex; align-items: stretch; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.top-actions { display: flex; align-items: stretch; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+.utility-actions, .run-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-secondary) 62%, transparent);
+}
+.run-actions {
+  background: color-mix(in srgb, var(--primary-color) 9%, var(--bg-secondary));
+}
 .btn, .pill-btn {
   min-height: 42px;
   border-radius: 999px;
@@ -331,6 +356,11 @@ button, input { font: inherit; }
   min-width: 84px;
   border-radius: 10px;
   padding-inline: 16px;
+}
+.top-actions .logout-btn {
+  min-width: 68px;
+  color: var(--danger-color);
+  background: color-mix(in srgb, var(--danger-color) 8%, var(--bg-primary));
 }
 .card {
   border: 1px solid var(--border-color);
@@ -560,7 +590,8 @@ button, input { font: inherit; }
   .top-bar, .card { border-radius: 20px; }
   .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .top-actions { justify-content: stretch; }
-  .top-actions > * { flex: 1; }
+  .utility-actions, .run-actions { flex: 1 1 100%; }
+  .utility-actions > *, .run-actions > * { flex: 1; }
   .section-head, .section-actions { flex-direction: column; align-items: stretch; }
   .config-scroll { grid-template-columns: 1fr; }
   .wide-field { grid-column: auto; }
@@ -584,6 +615,7 @@ const state = {
   logSearchIndex: 0,
   logMatches: [],
   logAutoScroll: true,
+  configIntervalConfigured: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -646,6 +678,19 @@ function parseHours(value) {
   const hours = Number.parseFloat(value);
   if (!Number.isFinite(hours) || hours <= 0) return '';
   return String(Math.round(hours * 3600));
+}
+
+function formatMinutes(seconds) {
+  if (seconds === null || seconds === undefined || seconds === '') return '';
+  const minutes = Number(seconds) / 60;
+  if (!Number.isFinite(minutes) || minutes <= 0) return '';
+  return minutes.toFixed(4).replace(/\\.?0+$/, '');
+}
+
+function parseMinutes(value) {
+  const minutes = Number.parseFloat(value);
+  if (!Number.isFinite(minutes) || minutes <= 0) return '';
+  return String(Math.round(minutes * 60));
 }
 
 function setBadge(el, text, kind) {
@@ -819,7 +864,8 @@ function renderStatus(data) {
     $('serviceDetail').textContent = `本轮开始于 ${formatDate(data.lastStartedAt)}`;
   } else if (serviceRunning) {
     $('serviceState').textContent = '服务运行中';
-    $('serviceDetail').textContent = `下次自动巡检：${formatDate(data.nextRunAt)}`;
+    const schedule = data.settings?.scheduleDescription ? `（${data.settings.scheduleDescription}）` : '';
+    $('serviceDetail').textContent = `下次自动巡检：${formatDate(data.nextRunAt)}${schedule}`;
   } else {
     $('serviceState').textContent = '服务已停止';
     $('serviceDetail').textContent = '点击启动后开始自动巡检。';
@@ -856,6 +902,10 @@ function fillConfigForm(values = {}) {
   $('configCpaToken').placeholder = values.cpaTokenConfigured ? '已配置，留空则不修改' : '未配置，请填写';
   $('configProxy').value = values.proxy || '';
   $('configCron').value = values.cronExpression ?? '';
+  state.configIntervalConfigured = values.intervalMinSeconds !== null && values.intervalMinSeconds !== undefined
+    && values.intervalMaxSeconds !== null && values.intervalMaxSeconds !== undefined;
+  $('configIntervalMin').value = formatMinutes(values.intervalMinSeconds);
+  $('configIntervalMax').value = formatMinutes(values.intervalMaxSeconds);
   $('configQuotaThreshold').value = values.quotaThreshold ?? '';
   $('configExpiryThreshold').value = values.expiryThresholdDays ?? '';
   $('configWorkers').value = values.workerThreads ?? '';
@@ -883,7 +933,7 @@ async function refreshStatus() {
 }
 
 function configPayload() {
-  return {
+  const payload = {
     cpaEndpoint: $('configCpaEndpoint').value.trim(),
     cpaToken: $('configCpaToken').value.trim(),
     proxy: $('configProxy').value.trim(),
@@ -901,6 +951,13 @@ function configPayload() {
     authEnabled: $('configAuthEnabled').checked,
     loginPassword: $('configLoginPassword').value,
   };
+  const intervalMin = $('configIntervalMin').value.trim();
+  const intervalMax = $('configIntervalMax').value.trim();
+  if (intervalMin || intervalMax || state.configIntervalConfigured) {
+    payload.intervalMinSeconds = parseMinutes(intervalMin);
+    payload.intervalMaxSeconds = parseMinutes(intervalMax);
+  }
+  return payload;
 }
 
 async function saveConfig(event) {

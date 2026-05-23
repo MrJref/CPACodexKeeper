@@ -1,3 +1,4 @@
+import threading
 import time
 
 from curl_cffi import requests
@@ -25,14 +26,24 @@ class OpenAIClient:
         "sec-ch-ua-platform": '"Windows"',
     }
 
-    def __init__(self, *, proxy: str | None = None, timeout: int = 15, max_retries: int = 2):
+    def __init__(
+        self,
+        *,
+        proxy: str | None = None,
+        timeout: int = 15,
+        max_retries: int = 2,
+        stop_event: threading.Event | None = None,
+    ):
         self.timeout = timeout
         self.max_retries = max_retries
+        self.stop_event = stop_event
         self.proxies = {"http": proxy, "https": proxy} if proxy else None
 
     def _request(self, method: str, url: str, **kwargs) -> RequestResult:
         last_error = None
         for attempt in range(self.max_retries + 1):
+            if self.stop_event and self.stop_event.is_set():
+                return RequestResult(status_code=None, error="stop requested")
             try:
                 response = requests.request(
                     method,
@@ -48,7 +59,10 @@ class OpenAIClient:
                 except (ValueError, TypeError):
                     pass
                 if response.status_code >= 500 and attempt < self.max_retries:
-                    time.sleep(1)
+                    if self.stop_event and self.stop_event.wait(1):
+                        return RequestResult(status_code=None, error="stop requested")
+                    if not self.stop_event:
+                        time.sleep(1)
                     continue
                 return RequestResult(
                     status_code=response.status_code,
@@ -59,7 +73,10 @@ class OpenAIClient:
             except Exception as exc:
                 last_error = str(exc)
                 if attempt < self.max_retries:
-                    time.sleep(1)
+                    if self.stop_event and self.stop_event.wait(1):
+                        return RequestResult(status_code=None, error="stop requested")
+                    if not self.stop_event:
+                        time.sleep(1)
                     continue
         return RequestResult(status_code=None, error=last_error or "request failed")
 

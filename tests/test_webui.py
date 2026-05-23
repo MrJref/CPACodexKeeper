@@ -115,8 +115,6 @@ class WebUITests(unittest.TestCase):
             self.assertTrue(runtime.start_scheduler())
             self.assertTrue(runtime.status()["serviceRunning"])
             self.assertTrue(runtime.stop_scheduler())
-
-        runtime._scheduler_thread.join(timeout=1)
         self.assertFalse(runtime.status()["serviceRunning"])
 
     def test_scheduler_logs_round_completion_time(self):
@@ -129,7 +127,7 @@ class WebUITests(unittest.TestCase):
 
         runtime._execute_round = Mock(side_effect=execute_round)
 
-        with patch("src.webui.next_cron_timestamp", return_value=0), patch("src.webui.current_log_time", return_value="2026-05-19 12:34:56"):
+        with patch("src.webui.next_inspection_timestamp", return_value=0), patch("src.webui.current_log_time", return_value="2026-05-19 12:34:56"):
             with redirect_stdout(StringIO()):
                 runtime._scheduler_loop()
 
@@ -175,20 +173,28 @@ class WebUITests(unittest.TestCase):
                 result = runtime.update_config({
                     "cpaEndpoint": "https://example.com",
                     "cronExpression": "0 0/15 * * * ?",
+                    "intervalMinSeconds": "600",
+                    "intervalMaxSeconds": "1800",
                     "quotaThreshold": 30,
                     "enableAutoDelete": False,
                 })
 
             self.assertEqual(runtime.settings.cron_expression, "0 0/15 * * * ?")
+            self.assertEqual(runtime.settings.interval_min_seconds, 600)
+            self.assertEqual(runtime.settings.interval_max_seconds, 1800)
             self.assertEqual(runtime.settings.quota_threshold, 30)
             self.assertFalse(runtime.settings.enable_auto_delete)
             self.assertEqual(runtime.keeper.settings.quota_threshold, 30)
             self.assertEqual(runtime.logger.max_lines, 5)
             self.assertEqual(result["values"]["cronExpression"], "0 0/15 * * * ?")
+            self.assertEqual(result["values"]["intervalMinSeconds"], 600)
+            self.assertEqual(result["values"]["intervalMaxSeconds"], 1800)
             self.assertEqual(result["values"]["quotaThreshold"], 30)
             self.assertFalse(result["values"]["enableAutoDelete"])
             text = config_path.read_text(encoding="utf-8")
             self.assertIn("  cron: \"0 0/15 * * * ?\"\n", text)
+            self.assertIn("  interval_min: 600\n", text)
+            self.assertIn("  interval_max: 1800\n", text)
             self.assertIn("  quota_threshold: 30\n", text)
             self.assertIn("  enable_auto_delete: false\n", text)
             self.assertIn("  log_max_lines: 5\n", text)

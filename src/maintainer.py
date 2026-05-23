@@ -1,10 +1,13 @@
 import random
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import weakref
+from concurrent.futures import ThreadPoolExecutor as BaseThreadPoolExecutor, TimeoutError, as_completed
+from dataclasses import replace
+from concurrent.futures.thread import _threads_queues, _worker
 
 from .cpa_client import CPAClient
-from .cron_schedule import next_cron_timestamp
+from .inspection_schedule import next_inspection_timestamp, schedule_description
 from .logging_utils import ConsoleLogger, TokenLogger, current_log_time
 from .models import MaintainerStats, format_window_label
 from .openai_client import OpenAIClient, parse_usage_info
@@ -12,25 +15,65 @@ from .settings import Settings
 from .utils import format_seconds, get_expired_remaining, get_expired_remaining_with_status
 
 
+class ThreadPoolExecutor(BaseThreadPoolExecutor):
+    def _adjust_thread_count(self):
+        if self._idle_semaphore.acquire(timeout=0):
+            return
+
+        def weakref_cb(_, q=self._work_queue):
+            q.put(None)
+
+        num_threads = len(self._threads)
+        if num_threads < self._max_workers:
+            thread_name = "%s_%d" % (self._thread_name_prefix or self, num_threads)
+            t = threading.Thread(
+                name=thread_name,
+                target=_worker,
+                args=(weakref.ref(self, weakref_cb), self._work_queue, self._initializer, self._initargs),
+            )
+            t.daemon = True
+            t.start()
+            self._threads.add(t)
+            _threads_queues[t] = self._work_queue
+
+
 class CPACodexKeeper:
-    def __init__(self, settings: Settings, dry_run: bool = False, logger: ConsoleLogger | None = None):
+    def __init__(
+        self,
+        settings: Settings,
+        dry_run: bool = False,
+        logger: ConsoleLogger | None = None,
+        stop_event: threading.Event | None = None,
+    ):
         self.settings = settings
         self.dry_run = dry_run
         self.logger = logger or ConsoleLogger()
+        self._stop_event = stop_event or threading.Event()
         self.cpa_client = CPAClient(
             settings.cpa_endpoint,
             settings.cpa_token,
             proxy=settings.proxy,
             timeout=settings.cpa_timeout_seconds,
             max_retries=settings.max_retries,
+            stop_event=self._stop_event,
         )
         self.openai_client = OpenAIClient(
             proxy=settings.proxy,
             timeout=settings.usage_timeout_seconds,
             max_retries=settings.max_retries,
+            stop_event=self._stop_event,
         )
         self.stats = MaintainerStats()
         self._stats_lock = threading.Lock()
+
+    def request_stop(self):
+        self._stop_event.set()
+
+    def clear_stop(self):
+        self._stop_event.clear()
+
+    def stop_requested(self):
+        return self._stop_event.is_set()
 
     def reset_stats(self):
         with self._stats_lock:
@@ -381,10 +424,14 @@ class CPACodexKeeper:
         name = token_info.get("name", "unknown")
         logger = TokenLogger(self.logger, idx, total, name)
         try:
+            if self.stop_requested():
+                return self._skip_token("收到停止请求，跳过", logger)
             logger.log("INFO", "获取详情...", indent=1)
             token_detail = self.get_token_detail(name)
             if not token_detail:
                 return self._skip_token("获取详情失败", logger)
+            if self.stop_requested():
+                return self._skip_token("收到停止请求，跳过", logger)
 
             disabled, remaining_seconds, remaining_str, expiry_known = self._log_token_details(token_detail, logger)
             cleanup_result = self._apply_non_refreshable_expiry_policy(name, token_detail, remaining_seconds, expiry_known, logger)
@@ -397,6 +444,8 @@ class CPACodexKeeper:
 
             logger.log("INFO", "检测在线状态...", indent=1)
             status, resp_data = self.check_token_live(access_token, account_id)
+            if self.stop_requested():
+                return self._skip_token("收到停止请求，跳过", logger)
             if status in (401, 402):
                 revive_result = self._try_revive_invalid_token(name, token_detail, logger)
                 if not revive_result:
@@ -457,6 +506,10 @@ class CPACodexKeeper:
     def run(self):
         self.reset_stats()
         self.log_startup()
+        if self.stop_requested():
+            self.log("INFO", "收到停止请求，跳过本轮巡检")
+            self.log("INFO", f"完成时间: {current_log_time()}")
+            return
         tokens = self.get_token_list()
         if not tokens:
             self.log("WARN", "未获取到任何 codex Token")
@@ -472,18 +525,47 @@ class CPACodexKeeper:
         self.blank_line()
 
         future_map = {}
-        with ThreadPoolExecutor(max_workers=self.settings.worker_threads) as executor:
+        executor = ThreadPoolExecutor(max_workers=self.settings.worker_threads)
+        executor_shutdown = False
+        try:
             for idx, token_info in enumerate(tokens, 1):
+                if self.stop_requested():
+                    self.log("INFO", "收到停止请求，停止提交新任务")
+                    break
                 future = executor.submit(self.process_token, token_info, idx, total)
                 future_map[future] = token_info
 
-            for future in as_completed(future_map):
+            pending = set(future_map)
+            while pending:
+                if self.stop_requested():
+                    for future in pending:
+                        future.cancel()
+                    self.log("INFO", "收到停止请求，已取消未开始的任务")
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    executor_shutdown = True
+                    break
                 try:
-                    future.result()
-                except Exception as exc:
-                    token_name = future_map[future].get("name", "unknown")
-                    self.log("ERROR", f"Token 任务异常 ({token_name}): {exc}", indent=1)
-                    self.blank_line()
+                    for future in as_completed(pending, timeout=0.5):
+                        pending.remove(future)
+                        try:
+                            future.result()
+                        except Exception as exc:
+                            token_name = future_map[future].get("name", "unknown")
+                            self.log("ERROR", f"Token 任务异常 ({token_name}): {exc}", indent=1)
+                            self.blank_line()
+                        if self.stop_requested():
+                            break
+                except TimeoutError:
+                    continue
+        except KeyboardInterrupt:
+            self.request_stop()
+            self.log("INFO", "收到中断信号，正在停止巡检")
+            executor.shutdown(wait=False, cancel_futures=True)
+            executor_shutdown = True
+            raise
+        finally:
+            if not executor_shutdown:
+                executor.shutdown(wait=True)
 
         elapsed = time.time() - start_time
         stats = self._stats_snapshot()
@@ -504,13 +586,14 @@ class CPACodexKeeper:
 
     def run_forever(self, cron_expression=None):
         round_no = 0
-        cron_expression = cron_expression or self.settings.cron_expression
-        self.log("INFO", f"守护模式启动，Cron: {cron_expression}")
-        while True:
-            next_run_at = next_cron_timestamp(cron_expression)
+        settings = replace(self.settings, cron_expression=cron_expression) if cron_expression else self.settings
+        self.log("INFO", f"守护模式启动，{schedule_description(settings)}")
+        while not self.stop_requested():
+            next_run_at = next_inspection_timestamp(settings)
             wait_seconds = max(0, next_run_at - time.time())
             self.log("INFO", f"下次自动巡检: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(next_run_at))}")
-            time.sleep(wait_seconds)
+            if self._stop_event.wait(wait_seconds):
+                break
             round_no += 1
             self.log("INFO", f"开始第 {round_no} 轮巡检")
             try:

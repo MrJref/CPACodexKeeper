@@ -2,10 +2,13 @@ import pathlib
 import sys
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from src.cron_schedule import CronExpressionError, next_cron_timestamp, normalize_cron_expression
+from src.inspection_schedule import next_inspection_timestamp
+from src.settings import Settings
 
 
 class CronScheduleTests(unittest.TestCase):
@@ -26,6 +29,19 @@ class CronScheduleTests(unittest.TestCase):
     def test_normalize_cron_expression_rejects_non_six_field_cron(self):
         with self.assertRaises(CronExpressionError):
             normalize_cron_expression("*/10 * * * *")
+
+    def test_next_inspection_timestamp_uses_random_interval_bounds(self):
+        settings = Settings(
+            cpa_endpoint="https://example.com",
+            cpa_token="secret",
+            interval_min_seconds=60,
+            interval_max_seconds=120,
+        )
+
+        with patch("src.inspection_schedule.random.randint", return_value=90):
+            next_run = next_inspection_timestamp(settings, after=1000)
+
+        self.assertEqual(next_run, 1090)
 
 
 if __name__ == "__main__":

@@ -655,7 +655,7 @@ class MaintainerTests(unittest.TestCase):
 
         executor = executor_cls.return_value.__enter__.return_value
         executor.submit.side_effect = submit_side_effect
-        as_completed_mock.side_effect = lambda items: list(items)
+        as_completed_mock.side_effect = lambda items, timeout=None: list(items)
         self.maintainer.process_token = Mock(side_effect=["alive", "alive", "alive"])
 
         self.maintainer.run()
@@ -688,7 +688,7 @@ class MaintainerTests(unittest.TestCase):
 
         executor = executor_cls.return_value.__enter__.return_value
         executor.submit.side_effect = submit_side_effect
-        as_completed_mock.side_effect = lambda items: list(items)
+        as_completed_mock.side_effect = lambda items, timeout=None: list(items)
 
         def process_side_effect(token_info, idx, total):
             if token_info["name"] == "boom":
@@ -719,7 +719,7 @@ class MaintainerTests(unittest.TestCase):
 
         executor = executor_cls.return_value.__enter__.return_value
         executor.submit.side_effect = submit_side_effect
-        as_completed_mock.side_effect = lambda items: list(items)
+        as_completed_mock.side_effect = lambda items, timeout=None: list(items)
 
         def process_side_effect(token_info, idx, total):
             if token_info["name"] == "t1":
@@ -753,7 +753,7 @@ class MaintainerTests(unittest.TestCase):
 
         executor = executor_cls.return_value.__enter__.return_value
         executor.submit.side_effect = submit_side_effect
-        as_completed_mock.side_effect = lambda items: list(items)
+        as_completed_mock.side_effect = lambda items, timeout=None: list(items)
         self.maintainer.process_token = Mock(return_value="alive")
 
         with patch("src.maintainer.current_log_time", return_value="2026-05-19 12:34:56"):
@@ -771,4 +771,17 @@ class MaintainerTests(unittest.TestCase):
             self.maintainer.run()
 
         self.maintainer.log.assert_any_call("WARN", "未获取到任何 codex Token")
+        self.maintainer.log.assert_any_call("INFO", "完成时间: 2026-05-19 12:34:56")
+
+    def test_run_honors_stop_request_before_work(self):
+        self.maintainer.request_stop()
+        self.maintainer.get_token_list = Mock()
+        self.maintainer.log_startup = Mock()
+        self.maintainer.log = Mock()
+
+        with patch("src.maintainer.current_log_time", return_value="2026-05-19 12:34:56"):
+            self.maintainer.run()
+
+        self.maintainer.get_token_list.assert_not_called()
+        self.maintainer.log.assert_any_call("INFO", "收到停止请求，跳过本轮巡检")
         self.maintainer.log.assert_any_call("INFO", "完成时间: 2026-05-19 12:34:56")

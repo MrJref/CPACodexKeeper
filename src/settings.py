@@ -13,6 +13,8 @@ DEFAULT_USAGE_TIMEOUT_SECONDS = 15
 DEFAULT_CPA_TIMEOUT_SECONDS = 30
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_WORKER_THREADS = 8
+DEFAULT_RANDOM_INTERVAL_MIN_SECONDS = None
+DEFAULT_RANDOM_INTERVAL_MAX_SECONDS = None
 DEFAULT_ENABLE_REFRESH = True
 DEFAULT_ENABLE_AUTO_DELETE = True
 DEFAULT_WEBUI_ENABLED = False
@@ -30,6 +32,10 @@ CONFIG_KEY_ALIASES = {
     "cpa.proxy": "CPA_PROXY",
     "cpa.cron": "CPA_CRON",
     "cpa.interval": "CPA_INTERVAL",
+    "cpa.interval_min": "CPA_INTERVAL_MIN",
+    "cpa.interval_max": "CPA_INTERVAL_MAX",
+    "cpa.interval_min_seconds": "CPA_INTERVAL_MIN",
+    "cpa.interval_max_seconds": "CPA_INTERVAL_MAX",
     "cpa.quota_threshold": "CPA_QUOTA_THRESHOLD",
     "cpa.expiry_threshold_days": "CPA_EXPIRY_THRESHOLD_DAYS",
     "cpa.enable_refresh": "CPA_ENABLE_REFRESH",
@@ -58,6 +64,8 @@ class Settings:
     cpa_token: str
     proxy: str | None = None
     cron_expression: str = DEFAULT_CRON_EXPRESSION
+    interval_min_seconds: int | None = DEFAULT_RANDOM_INTERVAL_MIN_SECONDS
+    interval_max_seconds: int | None = DEFAULT_RANDOM_INTERVAL_MAX_SECONDS
     quota_threshold: int = DEFAULT_QUOTA_THRESHOLD
     expiry_threshold_days: int = DEFAULT_EXPIRY_THRESHOLD_DAYS
     usage_timeout_seconds: int = DEFAULT_USAGE_TIMEOUT_SECONDS
@@ -73,6 +81,11 @@ class Settings:
     login_password: str = ""
     auth_session_ttl_seconds: int = DEFAULT_AUTH_SESSION_TTL_SECONDS
     log_max_lines: int = DEFAULT_LOG_MAX_LINES
+
+    def random_interval_bounds(self) -> tuple[int, int] | None:
+        if self.interval_min_seconds is None or self.interval_max_seconds is None:
+            return None
+        return self.interval_min_seconds, self.interval_max_seconds
 
 
 def _read_project_env_file(env_file: Path | None = None) -> dict[str, str]:
@@ -226,6 +239,13 @@ def _read_duration_seconds(name: str, default: int, env_values: dict[str, str], 
     return seconds
 
 
+def _read_optional_duration_seconds(name: str, env_values: dict[str, str], config_values: dict[str, str]) -> int | None:
+    raw = _get_config_value(name, env_values, config_values)
+    if raw in (None, ""):
+        return None
+    return _read_duration_seconds(name, 1, env_values, config_values)
+
+
 def _cron_from_legacy_interval(seconds: int) -> str:
     if seconds <= 0:
         raise SettingsError("CPA_INTERVAL must be positive")
@@ -255,6 +275,18 @@ def _read_cron_expression(env_values: dict[str, str], config_values: dict[str, s
         return normalize_cron_expression(raw)
     except CronExpressionError as exc:
         raise SettingsError(f"CPA_CRON is invalid: {exc}") from exc
+
+
+def _read_random_interval_bounds(env_values: dict[str, str], config_values: dict[str, str]) -> tuple[int | None, int | None]:
+    min_seconds = _read_optional_duration_seconds("CPA_INTERVAL_MIN", env_values, config_values)
+    max_seconds = _read_optional_duration_seconds("CPA_INTERVAL_MAX", env_values, config_values)
+    if min_seconds is None and max_seconds is None:
+        return None, None
+    if min_seconds is None or max_seconds is None:
+        raise SettingsError("CPA_INTERVAL_MIN and CPA_INTERVAL_MAX must be set together")
+    if min_seconds > max_seconds:
+        raise SettingsError("CPA_INTERVAL_MIN must be <= CPA_INTERVAL_MAX")
+    return min_seconds, max_seconds
 
 
 def _read_string(name: str, default: str, env_values: dict[str, str], config_values: dict[str, str]) -> str:
@@ -359,12 +391,15 @@ def load_settings(env_file: Path | None = None, config_file: Path | None = None)
         raise SettingsError("CPA_ENDPOINT must start with http:// or https://")
     if auth_enabled and not login_password:
         raise SettingsError("LOGIN_PASSWORD is required when AUTH_ENABLED is true")
+    interval_min_seconds, interval_max_seconds = _read_random_interval_bounds(env_values, config_values)
 
     return Settings(
         cpa_endpoint=endpoint,
         cpa_token=token,
         proxy=proxy,
         cron_expression=_read_cron_expression(env_values, config_values),
+        interval_min_seconds=interval_min_seconds,
+        interval_max_seconds=interval_max_seconds,
         quota_threshold=_read_int(
             "CPA_QUOTA_THRESHOLD",
             DEFAULT_QUOTA_THRESHOLD,

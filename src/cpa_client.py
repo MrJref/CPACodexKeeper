@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 from typing import Any
 
@@ -9,10 +10,20 @@ from .utils import brief_response_text
 
 
 class CPAClient:
-    def __init__(self, base_url: str, token: str, *, proxy: str | None = None, timeout: int = 30, max_retries: int = 2):
+    def __init__(
+        self,
+        base_url: str,
+        token: str,
+        *,
+        proxy: str | None = None,
+        timeout: int = 30,
+        max_retries: int = 2,
+        stop_event: threading.Event | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
+        self.stop_event = stop_event
         self.proxies = {"http": proxy, "https": proxy} if proxy else None
         self.headers = {
             "Authorization": f"Bearer {token}",
@@ -23,6 +34,8 @@ class CPAClient:
     def _request(self, method: str, path: str, **kwargs) -> RequestResult:
         last_error = None
         for attempt in range(self.max_retries + 1):
+            if self.stop_event and self.stop_event.is_set():
+                return RequestResult(status_code=None, error="stop requested")
             try:
                 response = requests.request(
                     method,
@@ -39,7 +52,10 @@ class CPAClient:
                 except (ValueError, TypeError):
                     pass
                 if response.status_code >= 500 and attempt < self.max_retries:
-                    time.sleep(1)
+                    if self.stop_event and self.stop_event.wait(1):
+                        return RequestResult(status_code=None, error="stop requested")
+                    if not self.stop_event:
+                        time.sleep(1)
                     continue
                 return RequestResult(
                     status_code=response.status_code,
@@ -50,7 +66,10 @@ class CPAClient:
             except Exception as exc:
                 last_error = str(exc)
                 if attempt < self.max_retries:
-                    time.sleep(1)
+                    if self.stop_event and self.stop_event.wait(1):
+                        return RequestResult(status_code=None, error="stop requested")
+                    if not self.stop_event:
+                        time.sleep(1)
                     continue
         return RequestResult(status_code=None, error=last_error or "request failed")
 

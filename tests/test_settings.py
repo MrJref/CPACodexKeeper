@@ -32,6 +32,8 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.cpa_endpoint, "https://example.com")
         self.assertEqual(settings.cpa_token, "secret")
         self.assertEqual(settings.cron_expression, "0 0/10 * * * ?")
+        self.assertIsNone(settings.interval_min_seconds)
+        self.assertIsNone(settings.interval_max_seconds)
         self.assertEqual(settings.quota_threshold, 1)
         self.assertEqual(settings.worker_threads, 8)
         self.assertTrue(settings.enable_refresh)
@@ -46,6 +48,8 @@ class SettingsTests(unittest.TestCase):
             "CPA_ENDPOINT=https://env-file.example.com\n"
             "CPA_TOKEN=file-secret\n"
             "CPA_CRON=0 0/5 * * * ?\n"
+            "CPA_INTERVAL_MIN=5m\n"
+            "CPA_INTERVAL_MAX=15m\n"
             "CPA_WORKER_THREADS=6\n"
             "WEBUI_ENABLED=true\n"
             "APP_PORT=9090\n"
@@ -59,6 +63,8 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.cpa_endpoint, "https://env-file.example.com")
         self.assertEqual(settings.cpa_token, "file-secret")
         self.assertEqual(settings.cron_expression, "0 0/5 * * * ?")
+        self.assertEqual(settings.interval_min_seconds, 5 * 60)
+        self.assertEqual(settings.interval_max_seconds, 15 * 60)
         self.assertEqual(settings.worker_threads, 6)
         self.assertTrue(settings.webui_enabled)
         self.assertEqual(settings.app_port, 9090)
@@ -123,6 +129,22 @@ class SettingsTests(unittest.TestCase):
     def test_load_settings_rejects_bad_legacy_interval(self):
         env_file = Path("does-not-exist.env")
         with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "CPA_INTERVAL": "abc"}, clear=True):
+            with self.assertRaises(SettingsError):
+                load_settings(env_file=env_file)
+
+    def test_load_settings_rejects_partial_random_interval_bounds(self):
+        env_file = Path("does-not-exist.env")
+        with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "CPA_INTERVAL_MIN": "10m"}, clear=True):
+            with self.assertRaises(SettingsError):
+                load_settings(env_file=env_file)
+
+    def test_load_settings_rejects_reversed_random_interval_bounds(self):
+        env_file = Path("does-not-exist.env")
+        with patch.dict(
+            os.environ,
+            {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "CPA_INTERVAL_MIN": "30m", "CPA_INTERVAL_MAX": "10m"},
+            clear=True,
+        ):
             with self.assertRaises(SettingsError):
                 load_settings(env_file=env_file)
 

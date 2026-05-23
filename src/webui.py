@@ -14,7 +14,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from curl_cffi import requests
 
-from .cron_schedule import next_cron_timestamp
+from .inspection_schedule import next_inspection_timestamp, schedule_description
 from .logging_utils import ConsoleLogger, current_log_time
 from .maintainer import CPACodexKeeper
 from .settings import PROJECT_CONFIG_FILE, Settings, SettingsError, load_settings, update_config_file
@@ -22,6 +22,7 @@ from .webui_assets import APP_CSS, APP_JS, INDEX_HTML
 
 
 SESSION_COOKIE = "cpacodexkeeper_session"
+SCHEDULER_STOP_JOIN_TIMEOUT_SECONDS = 2
 
 
 def _load_app_version() -> str:
@@ -79,6 +80,15 @@ def _payload_int(payload: dict[str, Any], name: str, *, minimum: int = 0, maximu
     return value
 
 
+def _payload_optional_int(payload: dict[str, Any], name: str, *, minimum: int = 0, maximum: int | None = None) -> int | str | None:
+    if name not in payload:
+        return None
+    raw = payload.get(name)
+    if raw in (None, ""):
+        return ""
+    return _payload_int(payload, name, minimum=minimum, maximum=maximum)
+
+
 def _payload_bool(payload: dict[str, Any], name: str) -> bool | None:
     if name not in payload:
         return None
@@ -119,6 +129,8 @@ def _config_updates_from_payload(payload: dict[str, Any]) -> dict[str, dict[str,
         cpa["token"] = token
     _set_if_present(cpa, "proxy", _payload_string(payload, "proxy", allow_empty=True))
     _set_if_present(cpa, "cron", _payload_string(payload, "cronExpression", allow_empty=False))
+    _set_if_present(cpa, "interval_min", _payload_optional_int(payload, "intervalMinSeconds", minimum=1))
+    _set_if_present(cpa, "interval_max", _payload_optional_int(payload, "intervalMaxSeconds", minimum=1))
     _set_if_present(cpa, "quota_threshold", _payload_int(payload, "quotaThreshold", minimum=0, maximum=100))
     _set_if_present(cpa, "expiry_threshold_days", _payload_int(payload, "expiryThresholdDays", minimum=0))
     _set_if_present(cpa, "enable_refresh", _payload_bool(payload, "enableRefresh"))
@@ -205,11 +217,11 @@ class KeeperRuntime:
         self.settings = settings
         self.dry_run = dry_run
         self.logger = HistoryLogger(max_lines=settings.log_max_lines)
-        self.keeper = CPACodexKeeper(settings=settings, dry_run=dry_run, logger=self.logger)
         self._run_lock = threading.Lock()
         self._state_lock = threading.Lock()
         self._proxy_test_lock = threading.Lock()
         self._stop_event = threading.Event()
+        self.keeper = CPACodexKeeper(settings=settings, dry_run=dry_run, logger=self.logger, stop_event=self._stop_event)
         self._scheduler_thread: threading.Thread | None = None
         self.running = False
         self.round_no = 0
@@ -223,9 +235,9 @@ class KeeperRuntime:
         with self._state_lock:
             self.settings = settings
             self.logger.set_max_lines(settings.log_max_lines)
-            self.keeper = CPACodexKeeper(settings=settings, dry_run=self.dry_run, logger=self.logger)
+            self.keeper = CPACodexKeeper(settings=settings, dry_run=self.dry_run, logger=self.logger, stop_event=self._stop_event)
             scheduler_active = bool(self._scheduler_thread and self._scheduler_thread.is_alive() and not self._stop_event.is_set())
-            self.next_run_at = next_cron_timestamp(settings.cron_expression) if scheduler_active else self.next_run_at
+            self.next_run_at = next_inspection_timestamp(settings) if scheduler_active else self.next_run_at
 
     def config_payload(self) -> dict[str, Any]:
         return {
@@ -235,6 +247,8 @@ class KeeperRuntime:
                 "cpaTokenConfigured": bool(self.settings.cpa_token),
                 "proxy": self.settings.proxy or "",
                 "cronExpression": self.settings.cron_expression,
+                "intervalMinSeconds": self.settings.interval_min_seconds,
+                "intervalMaxSeconds": self.settings.interval_max_seconds,
                 "quotaThreshold": self.settings.quota_threshold,
                 "expiryThresholdDays": self.settings.expiry_threshold_days,
                 "enableRefresh": self.settings.enable_refresh,
@@ -286,13 +300,14 @@ class KeeperRuntime:
         return self.config_payload()
 
     def scheduler_active(self) -> bool:
-        return bool(self._scheduler_thread and self._scheduler_thread.is_alive())
+        return bool(self._scheduler_thread and self._scheduler_thread.is_alive() and not self._stop_event.is_set())
 
     def start_scheduler(self) -> bool:
         with self._state_lock:
             if self._scheduler_thread and self._scheduler_thread.is_alive():
                 return False
             self._stop_event.clear()
+            self.keeper.clear_stop()
             self.next_run_at = None
             self._scheduler_thread = threading.Thread(
                 target=self._scheduler_loop,
@@ -309,20 +324,28 @@ class KeeperRuntime:
                 self.next_run_at = None
                 return False
             self._stop_event.set()
+            self.keeper.request_stop()
             self.next_run_at = None
+            thread = self._scheduler_thread
         self.logger.log("INFO", "守护模式停止中")
+        if thread is not threading.current_thread():
+            thread.join(timeout=SCHEDULER_STOP_JOIN_TIMEOUT_SECONDS)
         return True
 
     def stop(self) -> None:
         self._stop_event.set()
+        self.keeper.request_stop()
+        thread = self._scheduler_thread
+        if thread and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=SCHEDULER_STOP_JOIN_TIMEOUT_SECONDS)
 
     def _scheduler_loop(self) -> None:
-        self.logger.log("INFO", f"守护模式启动，Cron: {self.settings.cron_expression}")
+        self.logger.log("INFO", f"守护模式启动，{schedule_description(self.settings)}")
         try:
             while not self._stop_event.is_set():
                 with self._state_lock:
-                    cron_expression = self.settings.cron_expression
-                    self.next_run_at = next_cron_timestamp(cron_expression)
+                    settings = self.settings
+                    self.next_run_at = next_inspection_timestamp(settings)
                     next_run_at = self.next_run_at
                 self.logger.log("INFO", f"下次自动巡检: {datetime.fromtimestamp(next_run_at).strftime('%Y-%m-%d %H:%M:%S')}")
                 if self._stop_event.wait(max(0, next_run_at - time.time())):
@@ -341,6 +364,9 @@ class KeeperRuntime:
             self.logger.log("INFO", "守护模式已停止")
 
     def run_once_async(self) -> bool:
+        if not self.scheduler_active():
+            self._stop_event.clear()
+            self.keeper.clear_stop()
         thread = threading.Thread(target=self._execute_round, name="cpacodexkeeper-manual-run", daemon=True)
         thread.start()
         return True
@@ -450,6 +476,9 @@ class KeeperRuntime:
                 "settings": {
                     "cpaEndpoint": self.settings.cpa_endpoint,
                     "cronExpression": self.settings.cron_expression,
+                    "intervalMinSeconds": self.settings.interval_min_seconds,
+                    "intervalMaxSeconds": self.settings.interval_max_seconds,
+                    "scheduleDescription": schedule_description(self.settings),
                     "quotaThreshold": self.settings.quota_threshold,
                     "expiryThresholdDays": self.settings.expiry_threshold_days,
                     "enableRefresh": self.settings.enable_refresh,
