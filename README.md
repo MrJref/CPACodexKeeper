@@ -139,7 +139,7 @@ cp .env.example .env
 - `CPA_TOKEN`：CPA 管理 token
 - `CPA_PROXY`：可选代理
 - `CPA_CRON`：守护模式自动巡检 cron，使用 6 位格式 `秒 分 时 日 月 星期`，默认 `0 0/10 * * * ?`
-- `CPA_INTERVAL_MIN` / `CPA_INTERVAL_MAX`：可选随机巡检周期上下限，支持秒数或 `s/m/h/d` 后缀；同时设置后优先于 `CPA_CRON`
+- `CPA_INTERVAL_MIN` / `CPA_INTERVAL_MAX`：可选 Cron 随机偏移窗口，支持秒数或 `s/m/h/d` 后缀；`CPA_INTERVAL_MIN` 表示最多提前多久，`CPA_INTERVAL_MAX` 表示最多延后多久，例如 Cron 命中 `12:00:00`、下限 `8m`、上限 `2m` 时，会在 `11:52:00` 至 `12:02:00` 之间随机执行
 - `CPA_QUOTA_THRESHOLD`：剩余额度禁用阈值，默认 `1`；例如 `30` 表示剩余额度小于 30% 时禁用
 - `CPA_EXPIRY_THRESHOLD_DAYS`：禁用 token 的刷新阈值天数，默认 `3`
 - `CPA_ENABLE_REFRESH`：是否启用对禁用 token 的自动刷新，默认 `true`

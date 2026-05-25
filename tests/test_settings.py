@@ -132,21 +132,23 @@ class SettingsTests(unittest.TestCase):
             with self.assertRaises(SettingsError):
                 load_settings(env_file=env_file)
 
-    def test_load_settings_rejects_partial_random_interval_bounds(self):
+    def test_load_settings_rejects_partial_cron_offset_bounds(self):
         env_file = Path("does-not-exist.env")
         with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "CPA_INTERVAL_MIN": "10m"}, clear=True):
             with self.assertRaises(SettingsError):
                 load_settings(env_file=env_file)
 
-    def test_load_settings_rejects_reversed_random_interval_bounds(self):
+    def test_load_settings_accepts_left_offset_greater_than_right_offset(self):
         env_file = Path("does-not-exist.env")
         with patch.dict(
             os.environ,
             {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "CPA_INTERVAL_MIN": "30m", "CPA_INTERVAL_MAX": "10m"},
             clear=True,
         ):
-            with self.assertRaises(SettingsError):
-                load_settings(env_file=env_file)
+            settings = load_settings(env_file=env_file)
+
+        self.assertEqual(settings.interval_min_seconds, 30 * 60)
+        self.assertEqual(settings.interval_max_seconds, 10 * 60)
 
     def test_load_settings_rejects_non_integer_worker_threads(self):
         env_file = Path("does-not-exist.env")

@@ -13,8 +13,8 @@ DEFAULT_USAGE_TIMEOUT_SECONDS = 15
 DEFAULT_CPA_TIMEOUT_SECONDS = 30
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_WORKER_THREADS = 8
-DEFAULT_RANDOM_INTERVAL_MIN_SECONDS = None
-DEFAULT_RANDOM_INTERVAL_MAX_SECONDS = None
+DEFAULT_CRON_OFFSET_LEFT_SECONDS = None
+DEFAULT_CRON_OFFSET_RIGHT_SECONDS = None
 DEFAULT_ENABLE_REFRESH = True
 DEFAULT_ENABLE_AUTO_DELETE = True
 DEFAULT_WEBUI_ENABLED = False
@@ -64,8 +64,8 @@ class Settings:
     cpa_token: str
     proxy: str | None = None
     cron_expression: str = DEFAULT_CRON_EXPRESSION
-    interval_min_seconds: int | None = DEFAULT_RANDOM_INTERVAL_MIN_SECONDS
-    interval_max_seconds: int | None = DEFAULT_RANDOM_INTERVAL_MAX_SECONDS
+    interval_min_seconds: int | None = DEFAULT_CRON_OFFSET_LEFT_SECONDS
+    interval_max_seconds: int | None = DEFAULT_CRON_OFFSET_RIGHT_SECONDS
     quota_threshold: int = DEFAULT_QUOTA_THRESHOLD
     expiry_threshold_days: int = DEFAULT_EXPIRY_THRESHOLD_DAYS
     usage_timeout_seconds: int = DEFAULT_USAGE_TIMEOUT_SECONDS
@@ -82,10 +82,13 @@ class Settings:
     auth_session_ttl_seconds: int = DEFAULT_AUTH_SESSION_TTL_SECONDS
     log_max_lines: int = DEFAULT_LOG_MAX_LINES
 
-    def random_interval_bounds(self) -> tuple[int, int] | None:
+    def cron_offset_bounds(self) -> tuple[int, int] | None:
         if self.interval_min_seconds is None or self.interval_max_seconds is None:
             return None
         return self.interval_min_seconds, self.interval_max_seconds
+
+    def random_interval_bounds(self) -> tuple[int, int] | None:
+        return self.cron_offset_bounds()
 
 
 def _read_project_env_file(env_file: Path | None = None) -> dict[str, str]:
@@ -277,15 +280,13 @@ def _read_cron_expression(env_values: dict[str, str], config_values: dict[str, s
         raise SettingsError(f"CPA_CRON is invalid: {exc}") from exc
 
 
-def _read_random_interval_bounds(env_values: dict[str, str], config_values: dict[str, str]) -> tuple[int | None, int | None]:
+def _read_cron_offset_bounds(env_values: dict[str, str], config_values: dict[str, str]) -> tuple[int | None, int | None]:
     min_seconds = _read_optional_duration_seconds("CPA_INTERVAL_MIN", env_values, config_values)
     max_seconds = _read_optional_duration_seconds("CPA_INTERVAL_MAX", env_values, config_values)
     if min_seconds is None and max_seconds is None:
         return None, None
     if min_seconds is None or max_seconds is None:
         raise SettingsError("CPA_INTERVAL_MIN and CPA_INTERVAL_MAX must be set together")
-    if min_seconds > max_seconds:
-        raise SettingsError("CPA_INTERVAL_MIN must be <= CPA_INTERVAL_MAX")
     return min_seconds, max_seconds
 
 
@@ -391,7 +392,7 @@ def load_settings(env_file: Path | None = None, config_file: Path | None = None)
         raise SettingsError("CPA_ENDPOINT must start with http:// or https://")
     if auth_enabled and not login_password:
         raise SettingsError("LOGIN_PASSWORD is required when AUTH_ENABLED is true")
-    interval_min_seconds, interval_max_seconds = _read_random_interval_bounds(env_values, config_values)
+    interval_min_seconds, interval_max_seconds = _read_cron_offset_bounds(env_values, config_values)
 
     return Settings(
         cpa_endpoint=endpoint,

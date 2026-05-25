@@ -11,7 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from src.settings import Settings
 from src.webui import APP_VERSION, HistoryLogger, KeeperRuntime, WebUIService, proxy_label
-from src.webui_assets import APP_JS, INDEX_HTML
+from src.webui_assets import APP_CSS, APP_JS, INDEX_HTML
 
 
 class FakeHandler:
@@ -278,6 +278,18 @@ class WebUITests(unittest.TestCase):
         self.assertIn("isLogScrolledToBottom", APP_JS)
         self.assertIn("settleLogScroll", APP_JS)
         self.assertIn("addEventListener('scroll', syncLogAutoScroll)", APP_JS)
+
+    def test_config_interval_inputs_accept_integer_minutes(self):
+        self.assertIn('id="configIntervalMin" name="intervalMinMinutes" type="number" min="0.0167" step="any"', INDEX_HTML)
+        self.assertIn('id="configIntervalMax" name="intervalMaxMinutes" type="number" min="0.0167" step="any"', INDEX_HTML)
+
+    def test_config_form_uses_stable_grid_layout(self):
+        self.assertIn("scrollbar-gutter: stable;", APP_CSS)
+        self.assertIn("grid-template-columns: repeat(2, minmax(220px, 1fr));", APP_CSS)
+
+    def test_log_output_uses_fixed_height(self):
+        self.assertIn(".log-output {\n  height: 520px;", APP_CSS)
+        self.assertIn(".log-output { height: 420px; }", APP_CSS)
 
 
 if __name__ == "__main__":

@@ -92,17 +92,19 @@ INDEX_HTML = """<!doctype html>
                 <small id="proxyValue" class="field-hint">-</small>
               </label>
               <label class="field">
-                <span>备用巡检 Cron</span>
+                <span>巡检 Cron</span>
                 <input id="configCron" name="cronExpression" type="text" placeholder="0 0/10 * * * ?">
-                <small class="field-hint">未设置随机上下限时使用。</small>
+                <small class="field-hint">偏移窗口会基于此 Cron 计算。</small>
               </label>
               <label class="field">
-                <span>巡检周期下限 (分钟)</span>
-                <input id="configIntervalMin" name="intervalMinMinutes" type="number" min="0.0167" step="0.0167" placeholder="10">
+                <span>Cron 左偏移 (分钟)</span>
+                <input id="configIntervalMin" name="intervalMinMinutes" type="number" min="0.0167" step="any" placeholder="10">
+                <small class="field-hint">例如 8 表示最多提前 8 分钟。</small>
               </label>
               <label class="field">
-                <span>巡检周期上限 (分钟)</span>
-                <input id="configIntervalMax" name="intervalMaxMinutes" type="number" min="0.0167" step="0.0167" placeholder="30">
+                <span>Cron 右偏移 (分钟)</span>
+                <input id="configIntervalMax" name="intervalMaxMinutes" type="number" min="0.0167" step="any" placeholder="30">
+                <small class="field-hint">例如 2 表示最多延后 2 分钟。</small>
               </label>
               <label class="field">
                 <span>剩余额度阈值 (%)</span>
@@ -411,6 +413,7 @@ button, input { font: inherit; }
 .stat-card strong { display: block; margin-top: 16px; font-size: 32px; letter-spacing: -.04em; }
 .content-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .content-grid .card { padding: 20px; }
+.log-card { min-height: 0; }
 .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
 .section-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .muted { color: var(--text-tertiary); font-size: 13px; }
@@ -474,8 +477,9 @@ button, input { font: inherit; }
   padding-inline: 12px;
 }
 .log-output {
-  min-height: 460px;
-  max-height: 640px;
+  height: 520px;
+  min-height: 0;
+  max-height: none;
   overflow: auto;
   margin: 0;
   padding: 16px;
@@ -518,7 +522,7 @@ button, input { font: inherit; }
 .brand-block h1 { margin: 0; font-size: clamp(36px, 5vw, 58px); line-height: .96; letter-spacing: -.04em; }
 .brand-block p { margin: 0; max-width: 480px; color: var(--text-secondary); line-height: 1.7; }
 .login-card { padding: 28px; display: grid; gap: 14px; }
-.field { display: grid; gap: 8px; color: var(--text-secondary); font-weight: 800; }
+.field { display: grid; gap: 8px; min-width: 0; color: var(--text-secondary); font-weight: 800; }
 .field input {
   width: 100%;
   min-height: 46px;
@@ -547,17 +551,20 @@ button, input { font: inherit; }
 .config-scroll {
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   padding-right: 6px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 14px;
+  align-items: start;
 }
 .wide-field { grid-column: 1 / -1; }
-.input-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.input-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; min-width: 0; }
 .input-action-row .pill-btn { min-height: 46px; padding-inline: 18px; }
 .field-hint { min-height: 16px; color: var(--text-tertiary); font-size: 12px; font-weight: 800; }
 .check-field {
   min-height: 46px;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -596,6 +603,7 @@ button, input { font: inherit; }
   .config-scroll { grid-template-columns: 1fr; }
   .wide-field { grid-column: auto; }
   .input-action-row { grid-template-columns: 1fr; }
+  .log-output { height: 420px; }
   .config-submit { width: 100%; }
 }
 """

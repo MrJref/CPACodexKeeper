@@ -16,17 +16,27 @@ def format_interval_seconds(seconds: int) -> str:
 
 
 def schedule_description(settings: Settings) -> str:
-    bounds = settings.random_interval_bounds()
+    bounds = settings.cron_offset_bounds()
     if bounds is None:
         return f"Cron: {settings.cron_expression}"
-    min_seconds, max_seconds = bounds
-    return f"随机间隔: {format_interval_seconds(min_seconds)} - {format_interval_seconds(max_seconds)}"
+    left_seconds, right_seconds = bounds
+    return (
+        f"Cron: {settings.cron_expression}, "
+        f"随机偏移窗口: -{format_interval_seconds(left_seconds)} / +{format_interval_seconds(right_seconds)}"
+    )
 
 
 def next_inspection_timestamp(settings: Settings, *, after: float | None = None) -> float:
-    bounds = settings.random_interval_bounds()
+    bounds = settings.cron_offset_bounds()
     if bounds is None:
         return next_cron_timestamp(settings.cron_expression, after=after)
-    min_seconds, max_seconds = bounds
+    left_seconds, right_seconds = bounds
     base = time.time() if after is None else after
-    return base + random.randint(min_seconds, max_seconds)
+    cron_after = base - right_seconds - 1
+
+    while True:
+        cron_run_at = next_cron_timestamp(settings.cron_expression, after=cron_after)
+        minimum_offset = max(-left_seconds, int(base - cron_run_at) + 1)
+        if minimum_offset <= right_seconds:
+            return cron_run_at + random.randint(minimum_offset, right_seconds)
+        cron_after = cron_run_at

@@ -139,7 +139,7 @@ Then edit `.env`, or edit `config.yml` directly.
 - `CPA_TOKEN`: CPA management token
 - `CPA_PROXY`: optional HTTP/HTTPS proxy
 - `CPA_CRON`: daemon auto-inspection cron in 6-field format `second minute hour day month weekday`, default `0 0/10 * * * ?`
-- `CPA_INTERVAL_MIN` / `CPA_INTERVAL_MAX`: optional random inspection interval bounds, supporting raw seconds or `s/m/h/d` suffixes; when both are set they take precedence over `CPA_CRON`
+- `CPA_INTERVAL_MIN` / `CPA_INTERVAL_MAX`: optional random offset window around each Cron hit, supporting raw seconds or `s/m/h/d` suffixes; `CPA_INTERVAL_MIN` is the maximum early offset and `CPA_INTERVAL_MAX` is the maximum late offset. For example, if Cron hits `12:00:00` with `8m` / `2m`, the inspection runs at a random time between `11:52:00` and `12:02:00`.
 - `CPA_QUOTA_THRESHOLD`: remaining-quota disable threshold, default `1`; for example, `30` disables when remaining quota is below 30%
 - `CPA_EXPIRY_THRESHOLD_DAYS`: refresh threshold in days for disabled tokens, default `3`
 - `CPA_ENABLE_REFRESH`: whether automatic refresh for disabled tokens is enabled, default `true`
