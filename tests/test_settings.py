@@ -47,6 +47,7 @@ class SettingsTests(unittest.TestCase):
         env_file = self._make_env_file(
             "CPA_ENDPOINT=https://env-file.example.com\n"
             "CPA_TOKEN=file-secret\n"
+            "OPENAI_PROXY=http://127.0.0.1:7890\n"
             "CPA_CRON=0 0/5 * * * ?\n"
             "CPA_INTERVAL_MIN=5m\n"
             "CPA_INTERVAL_MAX=15m\n"
@@ -62,6 +63,7 @@ class SettingsTests(unittest.TestCase):
             settings = load_settings(env_file=env_file)
         self.assertEqual(settings.cpa_endpoint, "https://env-file.example.com")
         self.assertEqual(settings.cpa_token, "file-secret")
+        self.assertEqual(settings.proxy, "http://127.0.0.1:7890")
         self.assertEqual(settings.cron_expression, "0 0/5 * * * ?")
         self.assertEqual(settings.interval_min_seconds, 5 * 60)
         self.assertEqual(settings.interval_max_seconds, 15 * 60)
@@ -88,6 +90,8 @@ class SettingsTests(unittest.TestCase):
             "  token: config-secret\n"
             "  worker_threads: 3\n"
             "  enable_auto_delete: false\n"
+            "openai:\n"
+            "  proxy: http://127.0.0.1:7890\n"
             "webui:\n"
             "  enabled: true\n"
             "  port: 9091\n"
@@ -101,11 +105,42 @@ class SettingsTests(unittest.TestCase):
             settings = load_settings(config_file=config_file)
         self.assertEqual(settings.cpa_endpoint, "https://config.example.com")
         self.assertEqual(settings.cpa_token, "config-secret")
+        self.assertEqual(settings.proxy, "http://127.0.0.1:7890")
         self.assertEqual(settings.worker_threads, 3)
         self.assertFalse(settings.enable_auto_delete)
         self.assertTrue(settings.webui_enabled)
         self.assertEqual(settings.app_port, 9091)
         self.assertEqual(settings.log_max_lines, 42)
+
+    def test_load_settings_accepts_legacy_cpa_proxy(self):
+        with patch.dict(os.environ, {"CPA_ENDPOINT": "https://example.com", "CPA_TOKEN": "secret", "CPA_PROXY": "http://127.0.0.1:7890"}, clear=True):
+            settings = load_settings()
+        self.assertEqual(settings.proxy, "http://127.0.0.1:7890")
+
+    def test_load_settings_accepts_legacy_cpa_proxy_config_key(self):
+        config_file = self._make_config_file(
+            "cpa:\n"
+            "  endpoint: https://config.example.com\n"
+            "  token: config-secret\n"
+            "  proxy: http://127.0.0.1:7890\n"
+        )
+        with patch.dict(os.environ, {}, clear=True):
+            settings = load_settings(config_file=config_file)
+        self.assertEqual(settings.proxy, "http://127.0.0.1:7890")
+
+    def test_openai_proxy_overrides_legacy_cpa_proxy(self):
+        with patch.dict(
+            os.environ,
+            {
+                "CPA_ENDPOINT": "https://example.com",
+                "CPA_TOKEN": "secret",
+                "OPENAI_PROXY": "http://127.0.0.1:7890",
+                "CPA_PROXY": "http://127.0.0.1:8888",
+            },
+            clear=True,
+        ):
+            settings = load_settings()
+        self.assertEqual(settings.proxy, "http://127.0.0.1:7890")
 
     def test_load_settings_rejects_missing_endpoint(self):
         env_file = Path("does-not-exist.env")
@@ -190,6 +225,7 @@ class SettingsTests(unittest.TestCase):
         update_config_file(
             {
                 "cpa": {"endpoint": "https://config.example.com", "token": "secret", "quota_threshold": 30},
+                "openai": {"proxy": "http://127.0.0.1:7890"},
                 "webui": {"enabled": True, "log_max_lines": 42},
             },
             config_file=config_file,
@@ -199,5 +235,7 @@ class SettingsTests(unittest.TestCase):
         self.assertIn("cpa:\n", text)
         self.assertIn('  endpoint: "https://config.example.com"\n', text)
         self.assertIn("  quota_threshold: 30\n", text)
+        self.assertIn("openai:\n", text)
+        self.assertIn('  proxy: "http://127.0.0.1:7890"\n', text)
         self.assertIn("webui:\n", text)
         self.assertIn("  enabled: true\n", text)

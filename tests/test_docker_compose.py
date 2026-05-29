@@ -14,6 +14,7 @@ class DockerComposeTests(unittest.TestCase):
         self.assertIn("CPA_ENABLE_REFRESH: ${CPA_ENABLE_REFRESH:-true}", compose_text)
         self.assertIn("CPA_ENABLE_AUTO_DELETE: ${CPA_ENABLE_AUTO_DELETE:-true}", compose_text)
         self.assertIn("CPA_WORKER_THREADS:", compose_text)
+        self.assertIn("OPENAI_PROXY: ${OPENAI_PROXY:-${CPA_PROXY:-}}", compose_text)
         self.assertIn("WEBUI_ENABLED: ${WEBUI_ENABLED:-true}", compose_text)
         self.assertIn("CPA_QUOTA_THRESHOLD: ${CPA_QUOTA_THRESHOLD:-1}", compose_text)
         self.assertIn("AUTH_ENABLED: ${AUTH_ENABLED:-false}", compose_text)

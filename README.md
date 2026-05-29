@@ -137,7 +137,7 @@ cp .env.example .env
 
 - `CPA_ENDPOINT`：CPA 管理 API 地址
 - `CPA_TOKEN`：CPA 管理 token
-- `CPA_PROXY`：可选代理，仅用于 OpenAI/ChatGPT 用量查询、token 刷新和 WebUI 代理测试；CPA 管理 API 不走该代理
+- `OPENAI_PROXY`：可选代理，仅用于 OpenAI/ChatGPT 用量查询、token 刷新和 WebUI 代理测试；CPA 管理 API 不走该代理。旧的 `CPA_PROXY` 仍可读取，但不建议继续使用
 - `CPA_CRON`：守护模式自动巡检 cron，使用 6 位格式 `秒 分 时 日 月 星期`，默认 `0 0/10 * * * ?`
 - `CPA_INTERVAL_MIN` / `CPA_INTERVAL_MAX`：可选 Cron 随机偏移窗口，支持秒数或 `s/m/h/d` 后缀；`CPA_INTERVAL_MIN` 表示最多提前多久，`CPA_INTERVAL_MAX` 表示最多延后多久，例如 Cron 命中 `12:00:00`、下限 `8m`、上限 `2m` 时，会在 `11:52:00` 至 `12:02:00` 之间随机执行
 - `CPA_QUOTA_THRESHOLD`：剩余额度禁用阈值，默认 `1`；例如 `30` 表示剩余额度小于 30% 时禁用

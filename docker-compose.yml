@@ -10,7 +10,7 @@ services:
     environment:
       CPA_ENDPOINT: ${CPA_ENDPOINT}
       CPA_TOKEN: ${CPA_TOKEN}
-      CPA_PROXY: ${CPA_PROXY:-}
+      OPENAI_PROXY: ${OPENAI_PROXY:-${CPA_PROXY:-}}
       CPA_CRON: "${CPA_CRON:-}"
       CPA_INTERVAL: "${CPA_INTERVAL:-}"
       CPA_QUOTA_THRESHOLD: ${CPA_QUOTA_THRESHOLD:-1}

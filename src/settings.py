@@ -51,6 +51,11 @@ CONFIG_KEY_ALIASES = {
     "auth.enabled": "AUTH_ENABLED",
     "auth.login_password": "LOGIN_PASSWORD",
     "auth.session_ttl": "AUTH_SESSION_TTL",
+    "openai.proxy": "OPENAI_PROXY",
+}
+
+ENV_KEY_FALLBACKS = {
+    "OPENAI_PROXY": ("CPA_PROXY",),
 }
 
 
@@ -175,13 +180,20 @@ def _read_project_config_file(config_file: Path | None = None) -> dict[str, str]
 
 
 def _get_config_value(name: str, env_values: dict[str, str], config_values: dict[str, str]) -> str | None:
-    config_value = config_values.get(name)
-    if config_value not in (None, ""):
-        return config_value
-    env_value = os.getenv(name)
-    if env_value not in (None, ""):
-        return env_value
-    return env_values.get(name)
+    names = (name, *ENV_KEY_FALLBACKS.get(name, ()))
+    for key in names:
+        config_value = config_values.get(key)
+        if config_value not in (None, ""):
+            return config_value
+    for key in names:
+        env_value = os.getenv(key)
+        if env_value not in (None, ""):
+            return env_value
+    for key in names:
+        file_value = env_values.get(key)
+        if file_value not in (None, ""):
+            return file_value
+    return None
 
 
 def _read_int(
@@ -380,7 +392,7 @@ def load_settings(env_file: Path | None = None, config_file: Path | None = None)
     config_values = _read_project_config_file(config_file)
     endpoint = (_get_config_value("CPA_ENDPOINT", env_values, config_values) or "").strip().rstrip("/")
     token = (_get_config_value("CPA_TOKEN", env_values, config_values) or "").strip()
-    proxy = (_get_config_value("CPA_PROXY", env_values, config_values) or "").strip() or None
+    proxy = (_get_config_value("OPENAI_PROXY", env_values, config_values) or "").strip() or None
     auth_enabled = _read_bool("AUTH_ENABLED", DEFAULT_AUTH_ENABLED, env_values, config_values)
     login_password = (_get_config_value("LOGIN_PASSWORD", env_values, config_values) or "").strip()
 

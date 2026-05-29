@@ -120,6 +120,7 @@ def _set_if_present(target: dict[str, Any], key: str, value: Any) -> None:
 
 def _config_updates_from_payload(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     cpa: dict[str, Any] = {}
+    openai: dict[str, Any] = {}
     webui: dict[str, Any] = {}
     auth: dict[str, Any] = {}
 
@@ -127,7 +128,7 @@ def _config_updates_from_payload(payload: dict[str, Any]) -> dict[str, dict[str,
     token = _payload_string(payload, "cpaToken", allow_empty=True)
     if token:
         cpa["token"] = token
-    _set_if_present(cpa, "proxy", _payload_string(payload, "proxy", allow_empty=True))
+    _set_if_present(openai, "proxy", _payload_string(payload, "proxy", allow_empty=True))
     _set_if_present(cpa, "cron", _payload_string(payload, "cronExpression", allow_empty=False))
     _set_if_present(cpa, "interval_min", _payload_optional_int(payload, "intervalMinSeconds", minimum=1))
     _set_if_present(cpa, "interval_max", _payload_optional_int(payload, "intervalMaxSeconds", minimum=1))
@@ -147,7 +148,7 @@ def _config_updates_from_payload(payload: dict[str, Any]) -> dict[str, dict[str,
         auth["login_password"] = password
     _set_if_present(auth, "session_ttl", _payload_int(payload, "authSessionTtlSeconds", minimum=1))
 
-    return {"cpa": cpa, "webui": webui, "auth": auth}
+    return {"cpa": cpa, "openai": openai, "webui": webui, "auth": auth}
 
 
 class HistoryLogger(ConsoleLogger):
@@ -382,7 +383,7 @@ class KeeperRuntime:
                 "configured": False,
                 "proxy": None,
                 "latencyMs": None,
-                "error": "CPA_PROXY is not configured",
+                "error": "OPENAI_PROXY is not configured",
                 "timestamp": utc_now_iso(),
             }
             with self._state_lock:

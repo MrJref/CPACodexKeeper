@@ -4,7 +4,6 @@
 # cpa:
 #   endpoint: https://your-cpa-endpoint
 #   token: your-management-token
-#   proxy:
 #   cron: "0 0/10 * * * ?"
 #   # Cron random offset window: interval_min runs early, interval_max runs late.
 #   interval_min: 10m
@@ -17,6 +16,9 @@
 #   usage_timeout: 15
 #   max_retries: 2
 #   worker_threads: 8
+#
+# openai:
+#   proxy:
 #
 # webui:
 #   enabled: true

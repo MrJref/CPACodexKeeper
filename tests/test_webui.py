@@ -230,7 +230,7 @@ class WebUITests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertFalse(result["configured"])
-        self.assertEqual(result["error"], "CPA_PROXY is not configured")
+        self.assertEqual(result["error"], "OPENAI_PROXY is not configured")
 
     @patch("src.webui.requests.get")
     def test_proxy_test_reports_latency_and_sanitizes_proxy(self, get_mock):
