@@ -70,6 +70,25 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(usage.quota_check_percent, 30)
         self.assertEqual(usage.quota_check_label, "Week")
 
+    def test_parse_usage_info_preserves_fractional_used_percent(self):
+        usage = parse_usage_info({
+            "plan_type": "free",
+            "rate_limit": {
+                "primary_window": {
+                    "used_percent": 0.03,
+                    "limit_window_seconds": 604800,
+                },
+                "secondary_window": {
+                    "used_percent": "3.25%",
+                    "limit_window_seconds": 18000,
+                },
+            },
+        })
+        self.assertAlmostEqual(usage.primary_used_percent, 0.03)
+        self.assertAlmostEqual(usage.secondary_used_percent, 3.25)
+        self.assertAlmostEqual(self.maintainer._remaining_percent(usage.primary_used_percent), 99.97)
+        self.assertAlmostEqual(self.maintainer._remaining_percent(usage.secondary_used_percent), 96.75)
+
     def test_process_token_revives_invalid_token_on_401(self):
         self.maintainer.get_token_detail = Mock(return_value={
             "email": "a@example.com",

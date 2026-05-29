@@ -134,7 +134,7 @@ def parse_usage_info(result: RequestResult | dict | None) -> UsageInfo:
     credits = body.get("credits") or {}
 
     primary_window = TokenQuota(
-        used_percent=int(primary.get("used_percent", 0) or 0),
+        used_percent=_parse_used_percent(primary.get("used_percent")),
         limit_window_seconds=primary.get("limit_window_seconds"),
         reset_after_seconds=primary.get("reset_after_seconds"),
         reset_at=primary.get("reset_at"),
@@ -142,7 +142,7 @@ def parse_usage_info(result: RequestResult | dict | None) -> UsageInfo:
     secondary_window = None
     if isinstance(secondary, dict):
         secondary_window = TokenQuota(
-            used_percent=int(secondary.get("used_percent", 0) or 0),
+            used_percent=_parse_used_percent(secondary.get("used_percent")),
             limit_window_seconds=secondary.get("limit_window_seconds"),
             reset_after_seconds=secondary.get("reset_after_seconds"),
             reset_at=secondary.get("reset_at"),
@@ -155,3 +155,15 @@ def parse_usage_info(result: RequestResult | dict | None) -> UsageInfo:
         has_credits=bool(credits.get("has_credits", False)),
         credits_balance=credits.get("balance"),
     )
+
+
+def _parse_used_percent(value) -> float:
+    if value in (None, ""):
+        return 0
+    if isinstance(value, str):
+        value = value.strip().removesuffix("%")
+    try:
+        percent = float(value)
+    except (TypeError, ValueError):
+        return 0
+    return min(100, max(0, percent))

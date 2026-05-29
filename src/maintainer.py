@@ -281,16 +281,34 @@ class CPACodexKeeper:
 
         primary_remaining = self._remaining_percent(primary_pct)
         secondary_remaining = None if secondary_pct is None else self._remaining_percent(secondary_pct)
+        primary_remaining_text = self._format_percent(primary_remaining)
+        primary_used_text = self._format_percent(primary_pct)
 
-        quota_info = f"{primary_label}剩余额度: {primary_remaining}%"
+        quota_info = f"{primary_label}剩余额度: {primary_remaining_text}% (已用: {primary_used_text}%)"
         if secondary_pct is not None:
-            quota_info += f" | {secondary_label}剩余额度: {secondary_remaining}%"
+            secondary_remaining_text = self._format_percent(secondary_remaining)
+            secondary_used_text = self._format_percent(secondary_pct)
+            quota_info += f" | {secondary_label}剩余额度: {secondary_remaining_text}% (已用: {secondary_used_text}%)"
         quota_info += f" | 账户余额: {'有' if credits else '无'}"
         logger.log("OK", f"存活 | Plan: {plan} | {quota_info}", indent=1)
         return primary_pct, secondary_pct, primary_label, secondary_label
 
     def _remaining_percent(self, used_percent):
-        return max(0, 100 - int(used_percent or 0))
+        try:
+            used = float(used_percent or 0)
+        except (TypeError, ValueError):
+            used = 0
+        return min(100, max(0, 100 - used))
+
+    def _format_percent(self, value):
+        if value is None:
+            return "未知"
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return "未知"
+        text = f"{number:.2f}".rstrip("0").rstrip(".")
+        return text or "0"
 
     def _apply_quota_policy(
         self,
@@ -306,6 +324,9 @@ class CPACodexKeeper:
     ):
         primary_remaining = self._remaining_percent(primary_pct)
         secondary_remaining = None if secondary_pct is None else self._remaining_percent(secondary_pct)
+        primary_remaining_text = self._format_percent(primary_remaining)
+        secondary_remaining_text = self._format_percent(secondary_remaining) if secondary_remaining is not None else None
+        threshold_text = self._format_percent(self.settings.quota_threshold)
         primary_reached = primary_remaining < self.settings.quota_threshold
         secondary_present = secondary_pct is not None
         secondary_reached = secondary_present and secondary_remaining < self.settings.quota_threshold
@@ -319,26 +340,26 @@ class CPACodexKeeper:
             )
             reached_parts = []
             if primary_reached:
-                reached_parts.append(f"{primary_label}剩余额度 {primary_remaining}%")
+                reached_parts.append(f"{primary_label}剩余额度 {primary_remaining_text}%")
             if secondary_reached:
-                reached_parts.append(f"{secondary_label}剩余额度 {secondary_remaining}%")
+                reached_parts.append(f"{secondary_label}剩余额度 {secondary_remaining_text}%")
             reached_summary = "、".join(reached_parts)
         else:
             below_threshold = primary_remaining >= self.settings.quota_threshold
-            reached_summary = f"{primary_label}剩余额度 {primary_remaining}%"
+            reached_summary = f"{primary_label}剩余额度 {primary_remaining_text}%"
 
         if disabled:
             if below_threshold:
                 if secondary_present:
                     logger.log(
                         "WARN",
-                        f"已禁用且 {primary_label}/{secondary_label} 剩余额度均已不低于 {self.settings.quota_threshold}%，准备启用",
+                        f"已禁用且 {primary_label}/{secondary_label} 剩余额度均已不低于 {threshold_text}%，准备启用",
                         indent=1,
                     )
                 else:
                     logger.log(
                         "WARN",
-                        f"已禁用但{primary_label}剩余额度已恢复至 {primary_remaining}% >= {self.settings.quota_threshold}%，准备启用",
+                        f"已禁用但{primary_label}剩余额度已恢复至 {primary_remaining_text}% >= {threshold_text}%，准备启用",
                         indent=1,
                     )
                 if self.set_disabled_status(name, disabled=False, logger=logger):
@@ -351,12 +372,12 @@ class CPACodexKeeper:
             if not has_refresh_token and (primary_reached or secondary_reached):
                 return self._delete_token_with_reason(
                     name,
-                    f"无 Refresh Token，且{reached_summary} < {self.settings.quota_threshold}%，准备删除",
+                    f"无 Refresh Token，且{reached_summary} < {threshold_text}%，准备删除",
                     logger,
                 ), effective_disabled
             logger.log(
                 "INFO",
-                f"已禁用，{reached_summary} < {self.settings.quota_threshold}%，保持禁用",
+                f"已禁用，{reached_summary} < {threshold_text}%，保持禁用",
                 indent=1,
             )
             return None, effective_disabled
@@ -365,12 +386,12 @@ class CPACodexKeeper:
             if not has_refresh_token:
                 return self._delete_token_with_reason(
                     name,
-                    f"无 Refresh Token，且{reached_summary} < {self.settings.quota_threshold}%，准备删除",
+                    f"无 Refresh Token，且{reached_summary} < {threshold_text}%，准备删除",
                     logger,
                 ), effective_disabled
             logger.log(
                 "WARN",
-                f"{reached_summary} < {self.settings.quota_threshold}%，准备禁用",
+                f"{reached_summary} < {threshold_text}%，准备禁用",
                 indent=1,
             )
             if self.set_disabled_status(name, disabled=True, logger=logger):

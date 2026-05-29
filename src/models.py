@@ -12,7 +12,7 @@ def format_window_label(limit_window_seconds: int | None, fallback: str) -> str:
 
 @dataclass(slots=True)
 class TokenQuota:
-    used_percent: int = 0
+    used_percent: float = 0
     limit_window_seconds: int | None = None
     reset_after_seconds: int | None = None
     reset_at: int | None = None
@@ -27,15 +27,15 @@ class UsageInfo:
     credits_balance: float | None = None
 
     @property
-    def primary_used_percent(self) -> int:
+    def primary_used_percent(self) -> float:
         return self.primary_window.used_percent
 
     @property
-    def secondary_used_percent(self) -> int | None:
+    def secondary_used_percent(self) -> float | None:
         return None if self.secondary_window is None else self.secondary_window.used_percent
 
     @property
-    def quota_check_percent(self) -> int:
+    def quota_check_percent(self) -> float:
         return self.secondary_used_percent if self.secondary_used_percent is not None else self.primary_used_percent
 
     @property
