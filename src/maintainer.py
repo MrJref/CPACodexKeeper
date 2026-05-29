@@ -52,7 +52,6 @@ class CPACodexKeeper:
         self.cpa_client = CPAClient(
             settings.cpa_endpoint,
             settings.cpa_token,
-            proxy=settings.proxy,
             timeout=settings.cpa_timeout_seconds,
             max_retries=settings.max_retries,
             stop_event=self._stop_event,

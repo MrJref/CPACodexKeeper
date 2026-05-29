@@ -15,7 +15,6 @@ class CPAClient:
         base_url: str,
         token: str,
         *,
-        proxy: str | None = None,
         timeout: int = 30,
         max_retries: int = 2,
         stop_event: threading.Event | None = None,
@@ -24,7 +23,6 @@ class CPAClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.stop_event = stop_event
-        self.proxies = {"http": proxy, "https": proxy} if proxy else None
         self.headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -41,7 +39,6 @@ class CPAClient:
                     method,
                     f"{self.base_url}{path}",
                     headers=self.headers,
-                    proxies=self.proxies,
                     impersonate="chrome",
                     timeout=self.timeout,
                     **kwargs,
