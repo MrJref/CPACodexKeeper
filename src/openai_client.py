@@ -1,5 +1,8 @@
+import random
 import threading
 import time
+import uuid
+from collections.abc import Mapping
 
 from curl_cffi import requests
 
@@ -13,18 +16,14 @@ class OpenAIClient:
     CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
     REDIRECT_URI = "http://localhost:1455/auth/callback"
     IMPERSONATE = "chrome"
+    REFRESH_IMPERSONATE = "chrome110"
     USER_AGENT = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/136.0.0.0 Safari/537.36"
+        "Chrome/145.0.0.0 Safari/537.36"
     )
-    COMMON_BROWSER_HEADERS = {
-        "User-Agent": USER_AGENT,
-        "Accept-Language": "en-US,en;q=0.9",
-        "sec-ch-ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-    }
+    SEC_CH_UA = '"Google Chrome";v="145", "Not?A_Brand";v="8", "Chromium";v="145"'
+    SEC_CH_UA_FULL = '"Chromium";v="145.0.0.0", "Not:A-Brand";v="99.0.0.0", "Google Chrome";v="145.0.0.0"'
 
     def __init__(
         self,
@@ -33,13 +32,74 @@ class OpenAIClient:
         timeout: int = 15,
         max_retries: int = 2,
         stop_event: threading.Event | None = None,
+        sentinel_token: str | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ):
         self.timeout = timeout
         self.max_retries = max_retries
         self.stop_event = stop_event
         self.proxies = {"http": proxy, "https": proxy} if proxy else None
+        self.device_id = str(uuid.uuid4())
+        self.sentinel_token = (sentinel_token or "").strip()
+        self.extra_headers = dict(extra_headers or {})
 
-    def _request(self, method: str, url: str, **kwargs) -> RequestResult:
+    @classmethod
+    def _trace_headers(cls) -> dict[str, str]:
+        trace_id = str(random.getrandbits(64))
+        parent_id = str(random.getrandbits(64))
+        return {
+            "traceparent": f"00-{uuid.uuid4().hex}-{format(int(parent_id), '016x')}-01",
+            "tracestate": "dd=s:1;o:rum",
+            "x-datadog-origin": "rum",
+            "x-datadog-parent-id": parent_id,
+            "x-datadog-sampling-priority": "1",
+            "x-datadog-trace-id": trace_id,
+        }
+
+    def _browser_headers(
+        self,
+        *,
+        accept: str = "application/json",
+        content_type: str | None = None,
+        origin: str | None = None,
+        referer: str | None = None,
+        fetch_site: str = "same-origin",
+        fetch_dest: str = "empty",
+        fetch_mode: str = "cors",
+        include_sentinel: bool = False,
+    ) -> dict[str, str]:
+        headers = {
+            "Accept": accept,
+            "Accept-Language": "en-US,en;q=0.9",
+            "Priority": "u=1, i",
+            "User-Agent": self.USER_AGENT,
+            "sec-ch-ua": self.SEC_CH_UA,
+            "sec-ch-ua-arch": '"x86_64"',
+            "sec-ch-ua-bitness": '"64"',
+            "sec-ch-ua-full-version-list": self.SEC_CH_UA_FULL,
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-model": '""',
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-ch-ua-platform-version": '"10.0.0"',
+            "Sec-Fetch-Dest": fetch_dest,
+            "Sec-Fetch-Mode": fetch_mode,
+            "Sec-Fetch-Site": fetch_site,
+        }
+        if content_type:
+            headers["Content-Type"] = content_type
+        if origin:
+            headers["Origin"] = origin
+        if referer:
+            headers["Referer"] = referer
+        if self.device_id:
+            headers["oai-device-id"] = self.device_id
+        if include_sentinel and self.sentinel_token:
+            headers["openai-sentinel-token"] = self.sentinel_token
+        headers.update(self._trace_headers())
+        headers.update(self.extra_headers)
+        return headers
+
+    def _request(self, method: str, url: str, *, impersonate: str | None = None, **kwargs) -> RequestResult:
         last_error = None
         for attempt in range(self.max_retries + 1):
             if self.stop_event and self.stop_event.is_set():
@@ -49,7 +109,7 @@ class OpenAIClient:
                     method,
                     url,
                     proxies=self.proxies,
-                    impersonate=self.IMPERSONATE,
+                    impersonate=impersonate or self.IMPERSONATE,
                     timeout=self.timeout,
                     **kwargs,
                 )
@@ -81,17 +141,12 @@ class OpenAIClient:
         return RequestResult(status_code=None, error=last_error or "request failed")
 
     def check_usage(self, access_token: str, account_id: str | None = None) -> RequestResult:
-        headers = {
-            **self.COMMON_BROWSER_HEADERS,
-            "Authorization": f"Bearer {access_token}",
-            "Accept": "application/json",
-            "Origin": "https://chatgpt.com",
-            "Referer": "https://chatgpt.com/",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
-            "Priority": "u=1, i",
-        }
+        headers = self._browser_headers(
+            origin="https://chatgpt.com",
+            referer="https://chatgpt.com/",
+            include_sentinel=False,
+        )
+        headers["Authorization"] = f"Bearer {access_token}"
         if account_id:
             headers["Chatgpt-Account-Id"] = account_id
         return self._request("GET", self.USAGE_URL, headers=headers)
@@ -103,18 +158,14 @@ class OpenAIClient:
             "client_id": self.CLIENT_ID,
             "refresh_token": refresh_token,
         }
-        headers = {
-            **self.COMMON_BROWSER_HEADERS,
-            "Accept": "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Origin": "http://localhost:1455",
-            "Referer": "http://localhost:1455/",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "cross-site",
-            "Priority": "u=1, i",
-        }
-        return self._request("POST", self.REFRESH_URL, headers=headers, data=payload)
+        headers = self._browser_headers(
+            content_type="application/x-www-form-urlencoded",
+            origin="http://localhost:1455",
+            referer="http://localhost:1455/",
+            fetch_site="cross-site",
+            include_sentinel=False,
+        )
+        return self._request("POST", self.REFRESH_URL, impersonate=self.REFRESH_IMPERSONATE, headers=headers, data=payload)
 
 
 def parse_usage_info(result: RequestResult | dict | None) -> UsageInfo:

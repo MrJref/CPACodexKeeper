@@ -61,6 +61,7 @@ class CPACodexKeeper:
             timeout=settings.usage_timeout_seconds,
             max_retries=settings.max_retries,
             stop_event=self._stop_event,
+            sentinel_token=settings.openai_sentinel_token,
         )
         self.stats = MaintainerStats()
         self._stats_lock = threading.Lock()

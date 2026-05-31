@@ -48,6 +48,7 @@ class SettingsTests(unittest.TestCase):
             "CPA_ENDPOINT=https://env-file.example.com\n"
             "CPA_TOKEN=file-secret\n"
             "OPENAI_PROXY=http://127.0.0.1:7890\n"
+            "OPENAI_SENTINEL_TOKEN=sentinel-token\n"
             "CPA_CRON=0 0/5 * * * ?\n"
             "CPA_INTERVAL_MIN=5m\n"
             "CPA_INTERVAL_MAX=15m\n"
@@ -64,6 +65,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.cpa_endpoint, "https://env-file.example.com")
         self.assertEqual(settings.cpa_token, "file-secret")
         self.assertEqual(settings.proxy, "http://127.0.0.1:7890")
+        self.assertEqual(settings.openai_sentinel_token, "sentinel-token")
         self.assertEqual(settings.cron_expression, "0 0/5 * * * ?")
         self.assertEqual(settings.interval_min_seconds, 5 * 60)
         self.assertEqual(settings.interval_max_seconds, 15 * 60)
@@ -92,6 +94,7 @@ class SettingsTests(unittest.TestCase):
             "  enable_auto_delete: false\n"
             "openai:\n"
             "  proxy: http://127.0.0.1:7890\n"
+            "  sentinel_token: config-sentinel-token\n"
             "webui:\n"
             "  enabled: true\n"
             "  port: 9091\n"
@@ -106,6 +109,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.cpa_endpoint, "https://config.example.com")
         self.assertEqual(settings.cpa_token, "config-secret")
         self.assertEqual(settings.proxy, "http://127.0.0.1:7890")
+        self.assertEqual(settings.openai_sentinel_token, "config-sentinel-token")
         self.assertEqual(settings.worker_threads, 3)
         self.assertFalse(settings.enable_auto_delete)
         self.assertTrue(settings.webui_enabled)

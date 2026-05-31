@@ -19,6 +19,8 @@
 #
 # openai:
 #   proxy:
+#   # Optional override. oai-device-id is always generated automatically.
+#   sentinel_token:
 #
 # webui:
 #   enabled: true

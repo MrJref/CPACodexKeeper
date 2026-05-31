@@ -52,6 +52,7 @@ CONFIG_KEY_ALIASES = {
     "auth.login_password": "LOGIN_PASSWORD",
     "auth.session_ttl": "AUTH_SESSION_TTL",
     "openai.proxy": "OPENAI_PROXY",
+    "openai.sentinel_token": "OPENAI_SENTINEL_TOKEN",
 }
 
 ENV_KEY_FALLBACKS = {
@@ -68,6 +69,7 @@ class Settings:
     cpa_endpoint: str
     cpa_token: str
     proxy: str | None = None
+    openai_sentinel_token: str = ""
     cron_expression: str = DEFAULT_CRON_EXPRESSION
     interval_min_seconds: int | None = DEFAULT_CRON_OFFSET_LEFT_SECONDS
     interval_max_seconds: int | None = DEFAULT_CRON_OFFSET_RIGHT_SECONDS
@@ -393,6 +395,7 @@ def load_settings(env_file: Path | None = None, config_file: Path | None = None)
     endpoint = (_get_config_value("CPA_ENDPOINT", env_values, config_values) or "").strip().rstrip("/")
     token = (_get_config_value("CPA_TOKEN", env_values, config_values) or "").strip()
     proxy = (_get_config_value("OPENAI_PROXY", env_values, config_values) or "").strip() or None
+    openai_sentinel_token = (_get_config_value("OPENAI_SENTINEL_TOKEN", env_values, config_values) or "").strip()
     auth_enabled = _read_bool("AUTH_ENABLED", DEFAULT_AUTH_ENABLED, env_values, config_values)
     login_password = (_get_config_value("LOGIN_PASSWORD", env_values, config_values) or "").strip()
 
@@ -410,6 +413,7 @@ def load_settings(env_file: Path | None = None, config_file: Path | None = None)
         cpa_endpoint=endpoint,
         cpa_token=token,
         proxy=proxy,
+        openai_sentinel_token=openai_sentinel_token,
         cron_expression=_read_cron_expression(env_values, config_values),
         interval_min_seconds=interval_min_seconds,
         interval_max_seconds=interval_max_seconds,
